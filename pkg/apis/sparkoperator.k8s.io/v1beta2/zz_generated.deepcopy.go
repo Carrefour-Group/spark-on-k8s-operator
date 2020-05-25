@@ -747,6 +747,13 @@ func (in *SparkPodSpec) DeepCopyInto(out *SparkPodSpec) {
 			(*out)[key] = val
 		}
 	}
+	if in.EnvFrom != nil {
+		in, out := &in.EnvFrom, &out.EnvFrom
+		*out = make([]v1.EnvFromSource, len(*in))
+		for i := range *in {
+			(*in)[i].DeepCopyInto(&(*out)[i])
+		}
+	}
 	if in.EnvSecretKeyRefs != nil {
 		in, out := &in.EnvSecretKeyRefs, &out.EnvSecretKeyRefs
 		*out = make(map[string]NameKey, len(*in))
