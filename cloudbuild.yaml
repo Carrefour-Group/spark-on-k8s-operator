@@ -6,7 +6,7 @@ steps:
            '.']
 
 substitutions:
-  _PHENIX_SPARK_ON_K8S: 'v1beta2-1.1.0-2.4.5-SNAPSHOT-0.1'
+  _PHENIX_SPARK_ON_K8S: 'v1beta2-1.1.0-2.4.5-SNAPSHOT-0.2'
 
 images: [
   'eu.gcr.io/$PROJECT_ID/phenix/operators/spark-operator:${_PHENIX_SPARK_ON_K8S}'
