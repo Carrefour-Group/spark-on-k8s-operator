@@ -891,80 +891,6 @@ spec:
                               user:
                                 type: string
                             type: object
-                          windowsOptions:
-                            properties:
-                              gmsaCredentialSpec:
-                                type: string
-                              gmsaCredentialSpecName:
-                                type: string
-                              runAsUserName:
-                                type: string
-                            type: object
-                        type: object
-                      startupProbe:
-                        properties:
-                          exec:
-                            properties:
-                              command:
-                                items:
-                                  type: string
-                                type: array
-                            type: object
-                          failureThreshold:
-                            format: int32
-                            type: integer
-                          httpGet:
-                            properties:
-                              host:
-                                type: string
-                              httpHeaders:
-                                items:
-                                  properties:
-                                    name:
-                                      type: string
-                                    value:
-                                      type: string
-                                  required:
-                                  - name
-                                  - value
-                                  type: object
-                                type: array
-                              path:
-                                type: string
-                              port:
-                                anyOf:
-                                - type: integer
-                                - type: string
-                                x-kubernetes-int-or-string: true
-                              scheme:
-                                type: string
-                            required:
-                            - port
-                            type: object
-                          initialDelaySeconds:
-                            format: int32
-                            type: integer
-                          periodSeconds:
-                            format: int32
-                            type: integer
-                          successThreshold:
-                            format: int32
-                            type: integer
-                          tcpSocket:
-                            properties:
-                              host:
-                                type: string
-                              port:
-                                anyOf:
-                                - type: integer
-                                - type: string
-                                x-kubernetes-int-or-string: true
-                            required:
-                            - port
-                            type: object
-                          timeoutSeconds:
-                            format: int32
-                            type: integer
                         type: object
                       stdin:
                         type: boolean
@@ -1000,8 +926,6 @@ spec:
                             readOnly:
                               type: boolean
                             subPath:
-                              type: string
-                            subPathExpr:
                               type: string
                           required:
                           - mountPath
@@ -1192,15 +1116,6 @@ spec:
                         - value
                         type: object
                       type: array
-                    windowsOptions:
-                      properties:
-                        gmsaCredentialSpec:
-                          type: string
-                        gmsaCredentialSpecName:
-                          type: string
-                        runAsUserName:
-                          type: string
-                      type: object
                   type: object
                 serviceAccount:
                   type: string
@@ -1617,80 +1532,6 @@ spec:
                               user:
                                 type: string
                             type: object
-                          windowsOptions:
-                            properties:
-                              gmsaCredentialSpec:
-                                type: string
-                              gmsaCredentialSpecName:
-                                type: string
-                              runAsUserName:
-                                type: string
-                            type: object
-                        type: object
-                      startupProbe:
-                        properties:
-                          exec:
-                            properties:
-                              command:
-                                items:
-                                  type: string
-                                type: array
-                            type: object
-                          failureThreshold:
-                            format: int32
-                            type: integer
-                          httpGet:
-                            properties:
-                              host:
-                                type: string
-                              httpHeaders:
-                                items:
-                                  properties:
-                                    name:
-                                      type: string
-                                    value:
-                                      type: string
-                                  required:
-                                  - name
-                                  - value
-                                  type: object
-                                type: array
-                              path:
-                                type: string
-                              port:
-                                anyOf:
-                                - type: integer
-                                - type: string
-                                x-kubernetes-int-or-string: true
-                              scheme:
-                                type: string
-                            required:
-                            - port
-                            type: object
-                          initialDelaySeconds:
-                            format: int32
-                            type: integer
-                          periodSeconds:
-                            format: int32
-                            type: integer
-                          successThreshold:
-                            format: int32
-                            type: integer
-                          tcpSocket:
-                            properties:
-                              host:
-                                type: string
-                              port:
-                                anyOf:
-                                - type: integer
-                                - type: string
-                                x-kubernetes-int-or-string: true
-                            required:
-                            - port
-                            type: object
-                          timeoutSeconds:
-                            format: int32
-                            type: integer
                         type: object
                       stdin:
                         type: boolean
@@ -1726,8 +1567,6 @@ spec:
                             readOnly:
                               type: boolean
                             subPath:
-                              type: string
-                            subPathExpr:
                               type: string
                           required:
                           - mountPath
@@ -1771,8 +1610,6 @@ spec:
                       readOnly:
                         type: boolean
                       subPath:
-                        type: string
-                      subPathExpr:
                         type: string
                     required:
                     - mountPath
@@ -2615,80 +2452,6 @@ spec:
                               user:
                                 type: string
                             type: object
-                          windowsOptions:
-                            properties:
-                              gmsaCredentialSpec:
-                                type: string
-                              gmsaCredentialSpecName:
-                                type: string
-                              runAsUserName:
-                                type: string
-                            type: object
-                        type: object
-                      startupProbe:
-                        properties:
-                          exec:
-                            properties:
-                              command:
-                                items:
-                                  type: string
-                                type: array
-                            type: object
-                          failureThreshold:
-                            format: int32
-                            type: integer
-                          httpGet:
-                            properties:
-                              host:
-                                type: string
-                              httpHeaders:
-                                items:
-                                  properties:
-                                    name:
-                                      type: string
-                                    value:
-                                      type: string
-                                  required:
-                                  - name
-                                  - value
-                                  type: object
-                                type: array
-                              path:
-                                type: string
-                              port:
-                                anyOf:
-                                - type: integer
-                                - type: string
-                                x-kubernetes-int-or-string: true
-                              scheme:
-                                type: string
-                            required:
-                            - port
-                            type: object
-                          initialDelaySeconds:
-                            format: int32
-                            type: integer
-                          periodSeconds:
-                            format: int32
-                            type: integer
-                          successThreshold:
-                            format: int32
-                            type: integer
-                          tcpSocket:
-                            properties:
-                              host:
-                                type: string
-                              port:
-                                anyOf:
-                                - type: integer
-                                - type: string
-                                x-kubernetes-int-or-string: true
-                            required:
-                            - port
-                            type: object
-                          timeoutSeconds:
-                            format: int32
-                            type: integer
                         type: object
                       stdin:
                         type: boolean
@@ -2724,8 +2487,6 @@ spec:
                             readOnly:
                               type: boolean
                             subPath:
-                              type: string
-                            subPathExpr:
                               type: string
                           required:
                           - mountPath
@@ -2814,15 +2575,6 @@ spec:
                         - value
                         type: object
                       type: array
-                    windowsOptions:
-                      properties:
-                        gmsaCredentialSpec:
-                          type: string
-                        gmsaCredentialSpecName:
-                          type: string
-                        runAsUserName:
-                          type: string
-                      type: object
                   type: object
                 serviceAccount:
                   type: string
@@ -3239,80 +2991,6 @@ spec:
                               user:
                                 type: string
                             type: object
-                          windowsOptions:
-                            properties:
-                              gmsaCredentialSpec:
-                                type: string
-                              gmsaCredentialSpecName:
-                                type: string
-                              runAsUserName:
-                                type: string
-                            type: object
-                        type: object
-                      startupProbe:
-                        properties:
-                          exec:
-                            properties:
-                              command:
-                                items:
-                                  type: string
-                                type: array
-                            type: object
-                          failureThreshold:
-                            format: int32
-                            type: integer
-                          httpGet:
-                            properties:
-                              host:
-                                type: string
-                              httpHeaders:
-                                items:
-                                  properties:
-                                    name:
-                                      type: string
-                                    value:
-                                      type: string
-                                  required:
-                                  - name
-                                  - value
-                                  type: object
-                                type: array
-                              path:
-                                type: string
-                              port:
-                                anyOf:
-                                - type: integer
-                                - type: string
-                                x-kubernetes-int-or-string: true
-                              scheme:
-                                type: string
-                            required:
-                            - port
-                            type: object
-                          initialDelaySeconds:
-                            format: int32
-                            type: integer
-                          periodSeconds:
-                            format: int32
-                            type: integer
-                          successThreshold:
-                            format: int32
-                            type: integer
-                          tcpSocket:
-                            properties:
-                              host:
-                                type: string
-                              port:
-                                anyOf:
-                                - type: integer
-                                - type: string
-                                x-kubernetes-int-or-string: true
-                            required:
-                            - port
-                            type: object
-                          timeoutSeconds:
-                            format: int32
-                            type: integer
                         type: object
                       stdin:
                         type: boolean
@@ -3348,8 +3026,6 @@ spec:
                             readOnly:
                               type: boolean
                             subPath:
-                              type: string
-                            subPathExpr:
                               type: string
                           required:
                           - mountPath
@@ -3393,8 +3069,6 @@ spec:
                       readOnly:
                         type: boolean
                       subPath:
-                        type: string
-                      subPathExpr:
                         type: string
                     required:
                     - mountPath
@@ -3645,26 +3319,6 @@ spec:
                         type: string
                       optional:
                         type: boolean
-                    type: object
-                  csi:
-                    properties:
-                      driver:
-                        type: string
-                      fsType:
-                        type: string
-                      nodePublishSecretRef:
-                        properties:
-                          name:
-                            type: string
-                        type: object
-                      readOnly:
-                        type: boolean
-                      volumeAttributes:
-                        additionalProperties:
-                          type: string
-                        type: object
-                    required:
-                    - driver
                     type: object
                   downwardAPI:
                     properties:
@@ -4003,8 +3657,6 @@ spec:
                       readOnly:
                         type: boolean
                       registry:
-                        type: string
-                      tenant:
                         type: string
                       user:
                         type: string
