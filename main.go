@@ -57,6 +57,7 @@ var (
 	resyncInterval                 = flag.Int("resync-interval", 30, "Informer resync interval in seconds.")
 	namespace                      = flag.String("namespace", apiv1.NamespaceAll, "The Kubernetes namespace to manage. Will manage custom resource objects of the managed CRD types for the whole cluster if unset.")
 	namespaceFilter                = flag.String("namespace-filter", "", "A comma-separated list of regexps to manage specific Kubernetes namespaces. Ignored if namespace if specified")
+	labelSelectorFilter            = flag.String("label-selector-filter", "", "A comma-separated list of key=value, or key labels to filter resources during watch and list based on the specified labels.")
 	enableWebhook                  = flag.Bool("enable-webhook", false, "Whether to enable the mutating admission webhook for admitting and patching Spark pods.")
 	enableResourceQuotaEnforcement = flag.Bool("enable-resource-quota-enforcement", false, "Whether to enable ResourceQuota enforcement for SparkApplication resources. Requires the webhook to be enabled.")
 	ingressURLFormat               = flag.String("ingress-url-format", "", "Ingress URL format.")
@@ -163,7 +164,7 @@ func main() {
 	crInformerFactory := buildCustomResourceInformerFactory(crClient)
 	podInformerFactory := buildPodInformerFactory(kubeClient)
 
-	var namespaceFilterConfig = util.NamespaceFilterConfig{
+	var namespaceConfig = &util.NamespaceConfig{
 		Namespace:       *namespace,
 		NamespaceFilter: *namespaceFilter,
 	}
@@ -183,7 +184,7 @@ func main() {
 	}
 
 	applicationController := sparkapplication.NewController(
-		crClient, kubeClient, crInformerFactory, podInformerFactory, metricConfig, *namespace, &namespaceFilterConfig, *ingressURLFormat, batchSchedulerMgr)
+		crClient, kubeClient, crInformerFactory, podInformerFactory, metricConfig, namespaceConfig, *ingressURLFormat, batchSchedulerMgr)
 	scheduledApplicationController := scheduledsparkapplication.NewController(
 		crClient, kubeClient, apiExtensionsClient, crInformerFactory, clock.RealClock{})
 
@@ -199,7 +200,7 @@ func main() {
 		}
 		var err error
 		// Don't deregister webhook on exit if leader election enabled (i.e. multiple webhooks running)
-		hook, err = webhook.New(kubeClient, crInformerFactory, *namespace, !*enableLeaderElection, *enableResourceQuotaEnforcement, coreV1InformerFactory)
+		hook, err = webhook.New(kubeClient, crInformerFactory, namespaceConfig.Namespace, !*enableLeaderElection, *enableResourceQuotaEnforcement, coreV1InformerFactory)
 		if err != nil {
 			glog.Fatal(err)
 		}
@@ -257,6 +258,12 @@ func buildCustomResourceInformerFactory(crClient crclientset.Interface) crinform
 	if *namespace != apiv1.NamespaceAll {
 		factoryOpts = append(factoryOpts, crinformers.WithNamespace(*namespace))
 	}
+	if len(*labelSelectorFilter) > 0 {
+		tweakListOptionsFunc := func(options *metav1.ListOptions) {
+			options.LabelSelector = *labelSelectorFilter
+		}
+		factoryOpts = append(factoryOpts, crinformers.WithTweakListOptions(tweakListOptionsFunc))
+	}
 	return crinformers.NewSharedInformerFactoryWithOptions(
 		crClient,
 		// resyncPeriod. Every resyncPeriod, all resources in the cache will re-trigger events.
@@ -271,6 +278,9 @@ func buildPodInformerFactory(kubeClient clientset.Interface) informers.SharedInf
 	}
 	tweakListOptionsFunc := func(options *metav1.ListOptions) {
 		options.LabelSelector = fmt.Sprintf("%s,%s", operatorConfig.SparkRoleLabel, operatorConfig.LaunchedBySparkOperatorLabel)
+		if len(*labelSelectorFilter) > 0 {
+			options.LabelSelector = options.LabelSelector + "," + *labelSelectorFilter
+		}
 	}
 	podFactoryOpts = append(podFactoryOpts, informers.WithTweakListOptions(tweakListOptionsFunc))
 	return informers.NewSharedInformerFactoryWithOptions(kubeClient, time.Duration(*resyncInterval)*time.Second, podFactoryOpts...)
@@ -280,6 +290,12 @@ func buildCoreV1InformerFactory(kubeClient clientset.Interface) informers.Shared
 	var coreV1FactoryOpts []informers.SharedInformerOption
 	if *namespace != apiv1.NamespaceAll {
 		coreV1FactoryOpts = append(coreV1FactoryOpts, informers.WithNamespace(*namespace))
+	}
+	if len(*labelSelectorFilter) > 0 {
+		tweakListOptionsFunc := func(options *metav1.ListOptions) {
+			options.LabelSelector = *labelSelectorFilter
+		}
+		coreV1FactoryOpts = append(coreV1FactoryOpts, informers.WithTweakListOptions(tweakListOptionsFunc))
 	}
 	return informers.NewSharedInformerFactoryWithOptions(kubeClient, time.Duration(*resyncInterval)*time.Second, coreV1FactoryOpts...)
 }
