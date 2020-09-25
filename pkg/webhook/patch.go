@@ -33,6 +33,9 @@ import (
 
 const (
 	maxNameLength = 63
+	driverCoreRequest = "200m"
+	driverCoreLimit = "1000m"
+	driverMemory = "700Mi"
 )
 
 // patchOperation represents a RFC6902 JSON patch operation.
@@ -42,11 +45,18 @@ type patchOperation struct {
 	Value interface{} `json:"value,omitempty"`
 }
 
+type driverResourceRequirements struct {
+	CoreRequest string `json:"coreRequest"`
+	CoreLimit   string `json:"coreLimit"`
+	Memory      string `json:"memory"`
+}
+
 func patchSparkPod(pod *corev1.Pod, app *v1beta2.SparkApplication) []patchOperation {
 	var patchOps []patchOperation
 
 	if util.IsDriverPod(pod) {
 		patchOps = append(patchOps, addOwnerReference(pod, app))
+		patchOps = append(patchOps, addDriverResourcesList(pod, app)...)
 	}
 
 	patchOps = append(patchOps, addVolumes(pod, app)...)
@@ -184,6 +194,32 @@ func addVolumeMount(pod *corev1.Pod, mount corev1.VolumeMount) *patchOperation {
 	pod.Spec.Containers[i].VolumeMounts = append(pod.Spec.Containers[i].VolumeMounts, mount)
 
 	return &patchOperation{Op: "add", Path: path, Value: value}
+}
+
+func addDriverResourcesList(pod *corev1.Pod, app *v1beta2.SparkApplication) []patchOperation {
+	var patchOps []patchOperation
+	driverResourceRequirements := getDriverResource(app)
+
+	i := findContainer(pod)
+	if i < 0 {
+		glog.Warningf("not able to replace driver resources as Spark container was not found in pod %s", pod.Name)
+		return nil
+	}
+	path := fmt.Sprintf("/spec/containers/%d/resources", i)
+
+	resources := corev1.ResourceRequirements{
+		Limits:   map[corev1.ResourceName]resource.Quantity{
+			corev1.ResourceCPU: getQuantity(driverResourceRequirements.CoreLimit),
+			corev1.ResourceMemory: getQuantity(driverResourceRequirements.Memory),
+		},
+		Requests: map[corev1.ResourceName]resource.Quantity{
+			corev1.ResourceCPU: getQuantity(driverResourceRequirements.CoreRequest),
+			corev1.ResourceMemory: getQuantity(driverResourceRequirements.Memory),
+		},
+	}
+
+	patchOps = append(patchOps, patchOperation{Op: "add", Path: path, Value: resources})
+	return patchOps
 }
 
 func addEnvVars(pod *corev1.Pod, app *v1beta2.SparkApplication) []patchOperation {
@@ -725,4 +761,34 @@ func findContainer(pod *corev1.Pod) int {
 		}
 	}
 	return -1
+}
+
+func getDriverResource(app *v1beta2.SparkApplication) *driverResourceRequirements {
+
+	//CoreRequest correspond to driver's core Request
+	coreRequest := driverCoreRequest
+	if app.Spec.Driver.CoreRequest != nil {
+		coreRequest = *app.Spec.Driver.CoreRequest
+	}
+	//CoreLimit correspond to driver's core limit
+	coreLimit := driverCoreLimit
+	if app.Spec.Driver.CoreLimit != nil {
+		coreLimit = *app.Spec.Driver.CoreLimit
+	}
+	//Memory correspond to driver's memory
+	memory := driverMemory
+	if app.Spec.Driver.Memory != nil {
+		memory = strings.ReplaceAll(*app.Spec.Driver.Memory, "m", "Mi")
+	}
+
+	return &driverResourceRequirements{
+		CoreRequest: coreRequest,
+		CoreLimit:   coreLimit,
+		Memory:      memory,
+	}
+}
+
+func getQuantity(q string) resource.Quantity {
+	quantity, _ := resource.ParseQuantity(q)
+	return quantity
 }
