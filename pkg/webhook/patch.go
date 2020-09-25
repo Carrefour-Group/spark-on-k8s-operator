@@ -32,10 +32,10 @@ import (
 )
 
 const (
-	maxNameLength = 63
+	maxNameLength     = 63
 	driverCoreRequest = "200m"
-	driverCoreLimit = "1000m"
-	driverMemory = "700Mi"
+	driverCoreLimit   = "1000m"
+	driverMemory      = "700Mi"
 )
 
 // patchOperation represents a RFC6902 JSON patch operation.
@@ -56,7 +56,7 @@ func patchSparkPod(pod *corev1.Pod, app *v1beta2.SparkApplication) []patchOperat
 
 	if util.IsDriverPod(pod) {
 		patchOps = append(patchOps, addOwnerReference(pod, app))
-		patchOps = append(patchOps, addDriverResourcesList(pod, app)...)
+		patchOps = append(patchOps, addDriverResourcesRequirements(pod, app)...)
 	}
 
 	patchOps = append(patchOps, addVolumes(pod, app)...)
@@ -86,11 +86,6 @@ func patchSparkPod(pod *corev1.Pod, app *v1beta2.SparkApplication) []patchOperat
 	}
 
 	op = addSecurityContext(pod, app)
-	if op != nil {
-		patchOps = append(patchOps, *op)
-	}
-
-	op = addGPU(pod, app)
 	if op != nil {
 		patchOps = append(patchOps, *op)
 	}
@@ -196,7 +191,13 @@ func addVolumeMount(pod *corev1.Pod, mount corev1.VolumeMount) *patchOperation {
 	return &patchOperation{Op: "add", Path: path, Value: value}
 }
 
-func addDriverResourcesList(pod *corev1.Pod, app *v1beta2.SparkApplication) []patchOperation {
+//TODO: Should be deleted when moving to spark3. This is a work around to force resource requirements in version below than spark3.
+//TODO: fix gpu spec mutation.
+func addDriverResourcesRequirements(pod *corev1.Pod, app *v1beta2.SparkApplication) []patchOperation {
+
+	if app.Spec.Driver.GPU != nil {
+		return nil
+	}
 	var patchOps []patchOperation
 	driverResourceRequirements := getDriverResource(app)
 
@@ -208,12 +209,12 @@ func addDriverResourcesList(pod *corev1.Pod, app *v1beta2.SparkApplication) []pa
 	path := fmt.Sprintf("/spec/containers/%d/resources", i)
 
 	resources := corev1.ResourceRequirements{
-		Limits:   map[corev1.ResourceName]resource.Quantity{
-			corev1.ResourceCPU: getQuantity(driverResourceRequirements.CoreLimit),
+		Limits: map[corev1.ResourceName]resource.Quantity{
+			corev1.ResourceCPU:    getQuantity(driverResourceRequirements.CoreLimit),
 			corev1.ResourceMemory: getQuantity(driverResourceRequirements.Memory),
 		},
 		Requests: map[corev1.ResourceName]resource.Quantity{
-			corev1.ResourceCPU: getQuantity(driverResourceRequirements.CoreRequest),
+			corev1.ResourceCPU:    getQuantity(driverResourceRequirements.CoreRequest),
 			corev1.ResourceMemory: getQuantity(driverResourceRequirements.Memory),
 		},
 	}
@@ -620,46 +621,6 @@ func addInitContainers(pod *corev1.Pod, app *v1beta2.SparkApplication) []patchOp
 
 	}
 	return ops
-}
-
-func addGPU(pod *corev1.Pod, app *v1beta2.SparkApplication) *patchOperation {
-	var gpu *v1beta2.GPUSpec
-	if util.IsDriverPod(pod) {
-		gpu = app.Spec.Driver.GPU
-	}
-	if util.IsExecutorPod(pod) {
-		gpu = app.Spec.Executor.GPU
-	}
-	if gpu == nil {
-		return nil
-	}
-	if gpu.Name == "" {
-		glog.V(2).Infof("Please specify GPU resource name, such as: nvidia.com/gpu, amd.com/gpu etc. Current gpu spec: %+v", gpu)
-		return nil
-	}
-	if gpu.Quantity <= 0 {
-		glog.V(2).Infof("GPU Quantity must be positive. Current gpu spec: %+v", gpu)
-		return nil
-	}
-
-	i := findContainer(pod)
-	if i < 0 {
-		glog.Warningf("not able to add GPU as Spark container was not found in pod %s", pod.Name)
-		return nil
-	}
-
-	path := fmt.Sprintf("/spec/containers/%d/resources/limits", i)
-	var value interface{}
-	if len(pod.Spec.Containers[i].Resources.Limits) == 0 {
-		value = corev1.ResourceList{
-			corev1.ResourceName(gpu.Name): *resource.NewQuantity(gpu.Quantity, resource.DecimalSI),
-		}
-	} else {
-		encoder := strings.NewReplacer("~", "~0", "/", "~1")
-		path += "/" + encoder.Replace(gpu.Name)
-		value = *resource.NewQuantity(gpu.Quantity, resource.DecimalSI)
-	}
-	return &patchOperation{Op: "add", Path: path, Value: value}
 }
 
 func addHostNetwork(pod *corev1.Pod, app *v1beta2.SparkApplication) []patchOperation {

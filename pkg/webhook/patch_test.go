@@ -18,7 +18,6 @@ package webhook
 
 import (
 	"encoding/json"
-	"fmt"
 	"strings"
 	"testing"
 
@@ -88,10 +87,10 @@ func TestPatchSparkPod_AddDriverResourcesList(t *testing.T) {
 		},
 		Spec: v1beta2.SparkApplicationSpec{
 			Driver: v1beta2.DriverSpec{
-				CoreRequest : &coreRequest,
+				CoreRequest: &coreRequest,
 				SparkPodSpec: v1beta2.SparkPodSpec{
-					CoreLimit:                     &coreLimit,
-					Memory:                        &memory,
+					CoreLimit: &coreLimit,
+					Memory:    &memory,
 				},
 			},
 		},
@@ -108,15 +107,15 @@ func TestPatchSparkPod_AddDriverResourcesList(t *testing.T) {
 		Spec: corev1.PodSpec{
 			Containers: []corev1.Container{
 				{
-					Name:      config.SparkDriverContainerName,
-					Image:     "spark-driver:latest",
+					Name:  config.SparkDriverContainerName,
+					Image: "spark-driver:latest",
 					Resources: corev1.ResourceRequirements{
-						Limits:   map[corev1.ResourceName]resource.Quantity{
-							corev1.ResourceCPU: getQuantity("1500m"),
+						Limits: map[corev1.ResourceName]resource.Quantity{
+							corev1.ResourceCPU:    getQuantity("1500m"),
 							corev1.ResourceMemory: getQuantity("1500Mi"),
 						},
 						Requests: map[corev1.ResourceName]resource.Quantity{
-							corev1.ResourceCPU: getQuantity("1500m"),
+							corev1.ResourceCPU:    getQuantity("1500m"),
 							corev1.ResourceMemory: getQuantity("1500Mi"),
 						},
 					},
@@ -1159,198 +1158,6 @@ func TestPatchSparkPod_NodeSector(t *testing.T) {
 	assert.Equal(t, 2, len(modifiedExecutorPod.Spec.NodeSelector))
 	assert.Equal(t, "gpu", modifiedExecutorPod.Spec.NodeSelector["nodeType"])
 	assert.Equal(t, "secondvalue", modifiedExecutorPod.Spec.NodeSelector["secondkey"])
-}
-
-func TestPatchSparkPod_GPU(t *testing.T) {
-	cpuLimit := int64(10)
-	cpuRequest := int64(5)
-
-	type testcase struct {
-		gpuSpec     *v1beta2.GPUSpec
-		cpuLimits   *int64
-		cpuRequests *int64
-	}
-
-	getResourceRequirements := func(test testcase) *corev1.ResourceRequirements {
-		if test.cpuLimits == nil && test.cpuRequests == nil {
-			return nil
-		}
-		ret := corev1.ResourceRequirements{}
-		if test.cpuLimits != nil {
-			ret.Limits = corev1.ResourceList{}
-			ret.Limits[corev1.ResourceCPU] = *resource.NewQuantity(*test.cpuLimits, resource.DecimalSI)
-		}
-		if test.cpuRequests != nil {
-			ret.Requests = corev1.ResourceList{}
-			ret.Requests[corev1.ResourceCPU] = *resource.NewQuantity(*test.cpuRequests, resource.DecimalSI)
-		}
-		return &ret
-	}
-
-	assertFn := func(t *testing.T, modifiedPod *corev1.Pod, test testcase) {
-		// check GPU Limits
-		if test.gpuSpec != nil && test.gpuSpec.Name != "" && test.gpuSpec.Quantity > 0 {
-			quantity := modifiedPod.Spec.Containers[0].Resources.Limits[corev1.ResourceName(test.gpuSpec.Name)]
-			count, succeed := (&quantity).AsInt64()
-			if succeed != true {
-				t.Fatal(fmt.Errorf("value cannot be represented in an int64 OR would result in a loss of precision"))
-			}
-			assert.Equal(t, test.gpuSpec.Quantity, count)
-		}
-
-		// check CPU Requests
-		if test.cpuRequests != nil {
-			quantity := modifiedPod.Spec.Containers[0].Resources.Requests[corev1.ResourceCPU]
-			count, succeed := (&quantity).AsInt64()
-			if succeed != true {
-				t.Fatal(fmt.Errorf("value cannot be represented in an int64 OR would result in a loss of precision"))
-			}
-			assert.Equal(t, *test.cpuRequests, count)
-		}
-
-		// check CPU Limits
-		if test.cpuLimits != nil {
-			quantity := modifiedPod.Spec.Containers[0].Resources.Limits[corev1.ResourceCPU]
-			count, succeed := (&quantity).AsInt64()
-			if succeed != true {
-				t.Fatal(fmt.Errorf("value cannot be represented in an int64 OR would result in a loss of precision"))
-			}
-			assert.Equal(t, *test.cpuLimits, count)
-		}
-	}
-	app := &v1beta2.SparkApplication{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: "spark-test",
-			UID:  "spark-test-1",
-		},
-		Spec: v1beta2.SparkApplicationSpec{
-			Driver: v1beta2.DriverSpec{
-				SparkPodSpec: v1beta2.SparkPodSpec{},
-			},
-			Executor: v1beta2.ExecutorSpec{
-				SparkPodSpec: v1beta2.SparkPodSpec{},
-			},
-		},
-	}
-	tests := []testcase{
-		{
-			nil,
-			nil,
-			nil,
-		},
-		{
-			nil,
-			&cpuLimit,
-			nil,
-		},
-		{
-			nil,
-			nil,
-			&cpuRequest,
-		},
-		{
-			nil,
-			&cpuLimit,
-			&cpuRequest,
-		},
-		{
-			&v1beta2.GPUSpec{},
-			nil,
-			nil,
-		},
-		{
-			&v1beta2.GPUSpec{},
-			&cpuLimit,
-			nil,
-		},
-		{
-			&v1beta2.GPUSpec{},
-			nil,
-			&cpuRequest,
-		},
-		{
-			&v1beta2.GPUSpec{},
-			&cpuLimit,
-			&cpuRequest,
-		},
-		{
-			&v1beta2.GPUSpec{Name: "example.com/gpu", Quantity: 1},
-			nil,
-			nil,
-		},
-		{
-			&v1beta2.GPUSpec{Name: "example.com/gpu", Quantity: 1},
-			&cpuLimit,
-			nil,
-		},
-		{
-			&v1beta2.GPUSpec{Name: "example.com/gpu", Quantity: 1},
-			nil,
-			&cpuRequest,
-		},
-		{
-			&v1beta2.GPUSpec{Name: "example.com/gpu", Quantity: 1},
-			&cpuLimit,
-			&cpuRequest,
-		},
-	}
-
-	for _, test := range tests {
-		app.Spec.Driver.GPU = test.gpuSpec
-		app.Spec.Executor.GPU = test.gpuSpec
-		driverPod := &corev1.Pod{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: "spark-driver",
-				Labels: map[string]string{
-					config.SparkRoleLabel:               config.SparkDriverRole,
-					config.LaunchedBySparkOperatorLabel: "true",
-				},
-			},
-			Spec: corev1.PodSpec{
-				Containers: []corev1.Container{
-					{
-						Name:  config.SparkDriverContainerName,
-						Image: "spark-driver:latest",
-					},
-				},
-			},
-		}
-
-		if getResourceRequirements(test) != nil {
-			driverPod.Spec.Containers[0].Resources = *getResourceRequirements(test)
-		}
-		modifiedDriverPod, err := getModifiedPod(driverPod, app)
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		assertFn(t, modifiedDriverPod, test)
-		executorPod := &corev1.Pod{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: "spark-executor",
-				Labels: map[string]string{
-					config.SparkRoleLabel:               config.SparkExecutorRole,
-					config.LaunchedBySparkOperatorLabel: "true",
-				},
-			},
-			Spec: corev1.PodSpec{
-				Containers: []corev1.Container{
-					{
-						Name:  config.SparkExecutorContainerName,
-						Image: "spark-executor:latest",
-					},
-				},
-			},
-		}
-		if getResourceRequirements(test) != nil {
-			executorPod.Spec.Containers[0].Resources = *getResourceRequirements(test)
-		}
-		modifiedExecutorPod, err := getModifiedPod(executorPod, app)
-		if err != nil {
-			t.Fatal(err)
-		}
-		assertFn(t, modifiedExecutorPod, test)
-	}
 }
 
 func TestPatchSparkPod_HostNetwork(t *testing.T) {
