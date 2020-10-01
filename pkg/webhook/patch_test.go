@@ -18,7 +18,6 @@ package webhook
 
 import (
 	"encoding/json"
-	"strings"
 	"testing"
 
 	jsonpatch "github.com/evanphx/json-patch"
@@ -78,7 +77,8 @@ func TestPatchSparkPod_OwnerReference(t *testing.T) {
 func TestPatchSparkPod_AddDriverResourcesList(t *testing.T) {
 	coreRequest := "200m"
 	coreLimit := "1100m"
-	memory := "700m"
+	memoryStr := "2048m"
+	memory := int64((2048 + 384) * 1024 * 1024)
 
 	app := &v1beta2.SparkApplication{
 		ObjectMeta: metav1.ObjectMeta{
@@ -86,11 +86,12 @@ func TestPatchSparkPod_AddDriverResourcesList(t *testing.T) {
 			UID:  "spark-test-1",
 		},
 		Spec: v1beta2.SparkApplicationSpec{
+			Type: "Scala",
 			Driver: v1beta2.DriverSpec{
 				CoreRequest: &coreRequest,
 				SparkPodSpec: v1beta2.SparkPodSpec{
 					CoreLimit: &coreLimit,
-					Memory:    &memory,
+					Memory:    &memoryStr,
 				},
 			},
 		},
@@ -111,12 +112,12 @@ func TestPatchSparkPod_AddDriverResourcesList(t *testing.T) {
 					Image: "spark-driver:latest",
 					Resources: corev1.ResourceRequirements{
 						Limits: map[corev1.ResourceName]resource.Quantity{
-							corev1.ResourceCPU:    getQuantity("1500m"),
-							corev1.ResourceMemory: getQuantity("1500Mi"),
+							corev1.ResourceCPU:    getCpuQuantity("1500m"),
+							corev1.ResourceMemory: getMemoryQuantity(1500),
 						},
 						Requests: map[corev1.ResourceName]resource.Quantity{
-							corev1.ResourceCPU:    getQuantity("1500m"),
-							corev1.ResourceMemory: getQuantity("1500Mi"),
+							corev1.ResourceCPU:    getCpuQuantity("1500m"),
+							corev1.ResourceMemory: getMemoryQuantity(1500),
 						},
 					},
 				},
@@ -129,18 +130,18 @@ func TestPatchSparkPod_AddDriverResourcesList(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	expectedCpuLimitValue := modifiedPod.Spec.Containers[0].Resources.Limits.Cpu()
-	wantedCpuLimitValue := getQuantity(*app.Spec.Driver.CoreLimit)
+	cpuLimitValue := modifiedPod.Spec.Containers[0].Resources.Limits.Cpu()
+	expectedCpuLimitValue := getCpuQuantity(*app.Spec.Driver.CoreLimit)
 
-	expectedCpuRequestValue := modifiedPod.Spec.Containers[0].Resources.Requests.Cpu()
-	wantedCpuRequestValue := getQuantity(*app.Spec.Driver.CoreRequest)
+	cpuRequestValue := modifiedPod.Spec.Containers[0].Resources.Requests.Cpu()
+	expectedCpuRequestValue := getCpuQuantity(*app.Spec.Driver.CoreRequest)
 
-	expectedMemoryValue := modifiedPod.Spec.Containers[0].Resources.Requests.Memory()
-	wantedCpuMemoryValue := getQuantity(strings.ReplaceAll(*app.Spec.Driver.Memory, "m", "Mi"))
+	memoryValue := modifiedPod.Spec.Containers[0].Resources.Requests.Memory()
+	expectedMemoryValue := getMemoryQuantity(memory)
 
-	assert.Equal(t, wantedCpuLimitValue, *expectedCpuLimitValue)
-	assert.Equal(t, wantedCpuRequestValue, *expectedCpuRequestValue)
-	assert.Equal(t, wantedCpuMemoryValue, *expectedMemoryValue)
+	assert.Equal(t, expectedCpuLimitValue, *cpuLimitValue)
+	assert.Equal(t, expectedCpuRequestValue, *cpuRequestValue)
+	assert.Equal(t, expectedMemoryValue, *memoryValue)
 }
 
 func TestPatchSparkPod_Local_Volumes(t *testing.T) {

@@ -29,13 +29,14 @@ import (
 	"github.com/GoogleCloudPlatform/spark-on-k8s-operator/pkg/apis/sparkoperator.k8s.io/v1beta2"
 	"github.com/GoogleCloudPlatform/spark-on-k8s-operator/pkg/config"
 	"github.com/GoogleCloudPlatform/spark-on-k8s-operator/pkg/util"
+	"github.com/GoogleCloudPlatform/spark-on-k8s-operator/pkg/webhook/resourceusage"
 )
 
 const (
 	maxNameLength     = 63
 	driverCoreRequest = "200m"
 	driverCoreLimit   = "1000m"
-	driverMemory      = "700Mi"
+	driverMemory      = int64(700)
 )
 
 // patchOperation represents a RFC6902 JSON patch operation.
@@ -48,7 +49,7 @@ type patchOperation struct {
 type driverResourceRequirements struct {
 	CoreRequest string `json:"coreRequest"`
 	CoreLimit   string `json:"coreLimit"`
-	Memory      string `json:"memory"`
+	Memory      int64  `json:"memory,omitempty"`
 }
 
 func patchSparkPod(pod *corev1.Pod, app *v1beta2.SparkApplication) []patchOperation {
@@ -210,12 +211,12 @@ func addDriverResourcesRequirements(pod *corev1.Pod, app *v1beta2.SparkApplicati
 
 	resources := corev1.ResourceRequirements{
 		Limits: map[corev1.ResourceName]resource.Quantity{
-			corev1.ResourceCPU:    getQuantity(driverResourceRequirements.CoreLimit),
-			corev1.ResourceMemory: getQuantity(driverResourceRequirements.Memory),
+			corev1.ResourceCPU:    getCpuQuantity(driverResourceRequirements.CoreLimit),
+			corev1.ResourceMemory: getMemoryQuantity(driverResourceRequirements.Memory),
 		},
 		Requests: map[corev1.ResourceName]resource.Quantity{
-			corev1.ResourceCPU:    getQuantity(driverResourceRequirements.CoreRequest),
-			corev1.ResourceMemory: getQuantity(driverResourceRequirements.Memory),
+			corev1.ResourceCPU:    getCpuQuantity(driverResourceRequirements.CoreRequest),
+			corev1.ResourceMemory: getMemoryQuantity(driverResourceRequirements.Memory),
 		},
 	}
 
@@ -739,7 +740,12 @@ func getDriverResource(app *v1beta2.SparkApplication) *driverResourceRequirement
 	//Memory correspond to driver's memory
 	memory := driverMemory
 	if app.Spec.Driver.Memory != nil {
-		memory = strings.ReplaceAll(*app.Spec.Driver.Memory, "m", "Mi")
+		mem, err := resourceusage.MemoryRequiredForSparkPod(app.Spec.Driver.SparkPodSpec, app.Spec.MemoryOverheadFactor, app.Spec.Type, 1)
+		if err != nil {
+			glog.Warningf("not able to compute memory resources for driver in spark application: %s. Will not patch driver resources.", app.Name)
+			return &driverResourceRequirements{}
+		}
+		memory = mem
 	}
 
 	return &driverResourceRequirements{
@@ -749,7 +755,11 @@ func getDriverResource(app *v1beta2.SparkApplication) *driverResourceRequirement
 	}
 }
 
-func getQuantity(q string) resource.Quantity {
+func getCpuQuantity(q string) resource.Quantity {
 	quantity, _ := resource.ParseQuantity(q)
 	return quantity
+}
+
+func getMemoryQuantity(q int64) resource.Quantity {
+	return *resource.NewQuantity(q, resource.BinarySI)
 }
