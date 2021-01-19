@@ -144,6 +144,49 @@ func TestPatchSparkPod_AddDriverResourcesList(t *testing.T) {
 	assert.Equal(t, expectedMemoryValue, *memoryValue)
 }
 
+func TestPatchSparkPod_AddExecutorServiceAccount(t *testing.T) {
+
+	serviceAccount := "phenix-sa"
+
+	app := &v1beta2.SparkApplication{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "spark-test",
+			UID:  "spark-test-1",
+		},
+		Spec: v1beta2.SparkApplicationSpec{
+			Type: "Scala",
+			Executor: v1beta2.ExecutorSpec{
+				SparkPodSpec: v1beta2.SparkPodSpec{
+					ServiceAccount: &serviceAccount,
+				},
+			},
+		},
+	}
+
+	pod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "spark-executor",
+			Labels: map[string]string{
+				config.SparkRoleLabel:               config.SparkExecutorRole,
+				config.LaunchedBySparkOperatorLabel: "true",
+			},
+		},
+		Spec: corev1.PodSpec{
+			ServiceAccountName: "default",
+		},
+	}
+
+	modifiedPod, err := getModifiedPod(pod, app)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	serviceAccountValue := modifiedPod.Spec.ServiceAccountName
+	expectedserviceAccountValue := *app.Spec.Executor.ServiceAccount
+
+	assert.Equal(t, expectedserviceAccountValue, serviceAccountValue)
+}
+
 func TestPatchSparkPod_Local_Volumes(t *testing.T) {
 	app := &v1beta2.SparkApplication{
 		ObjectMeta: metav1.ObjectMeta{

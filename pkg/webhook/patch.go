@@ -236,8 +236,8 @@ func getServiceAccountName(pod *corev1.Pod, app *v1beta2.SparkApplication) strin
 }
 
 //TODO: Should be deleted when moving to spark3. This is a work around to force executor service account than spark2.8(c.f. SPARK-27872).
+//TODO: You should mount the appropriate sa token in your executor pod, otherwise the default sa token will be mounted
 func addExecutorServiceAccount(pod *corev1.Pod, app *v1beta2.SparkApplication) []patchOperation {
-
 	if !util.IsExecutorPod(pod) {
 		return nil
 	}
