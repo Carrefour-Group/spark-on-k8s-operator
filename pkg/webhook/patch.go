@@ -73,6 +73,7 @@ func patchSparkPod(pod *corev1.Pod, app *v1beta2.SparkApplication) []patchOperat
 	patchOps = append(patchOps, addDNSConfig(pod, app)...)
 	patchOps = append(patchOps, addEnvVars(pod, app)...)
 	patchOps = append(patchOps, addEnvFrom(pod, app)...)
+	patchOps = append(patchOps, addExecutorServiceAccount(pod, app)...)
 
 	op := addSchedulerName(pod, app)
 	if op != nil {
@@ -221,6 +222,32 @@ func addDriverResourcesRequirements(pod *corev1.Pod, app *v1beta2.SparkApplicati
 	}
 
 	patchOps = append(patchOps, patchOperation{Op: "add", Path: path, Value: resources})
+	return patchOps
+}
+
+func getServiceAccountName(pod *corev1.Pod, app *v1beta2.SparkApplication) string {
+	var value = "default"
+	if app.Spec.Executor.ServiceAccount != nil {
+		value = *app.Spec.Executor.ServiceAccount
+	} else if pod.Spec.ServiceAccountName != "" {
+		value = pod.Spec.ServiceAccountName
+	}
+	return value
+}
+
+//TODO: Should be deleted when moving to spark3. This is a work around to force executor service account than spark2.8(c.f. SPARK-27872).
+func addExecutorServiceAccount(pod *corev1.Pod, app *v1beta2.SparkApplication) []patchOperation {
+
+	if !util.IsExecutorPod(pod) {
+		return nil
+	}
+
+	path := fmt.Sprintf("/spec/serviceAccountName")
+	serviceAccountName := getServiceAccountName(pod, app)
+
+	var patchOps []patchOperation
+
+	patchOps = append(patchOps, patchOperation{Op: "add", Path: path, Value: serviceAccountName})
 	return patchOps
 }
 
@@ -678,6 +705,7 @@ func addTerminationGracePeriodSeconds(pod *corev1.Pod, app *v1beta2.SparkApplica
 }
 
 func addPodLifeCycleConfig(pod *corev1.Pod, app *v1beta2.SparkApplication) *patchOperation {
+
 	var lifeCycle *corev1.Lifecycle
 	if util.IsDriverPod(pod) {
 		lifeCycle = app.Spec.Driver.Lifecycle
