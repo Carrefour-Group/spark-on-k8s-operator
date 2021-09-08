@@ -221,6 +221,31 @@ func (c *Controller) onUpdate(oldObj, newObj interface{}) {
 		return
 	}
 
+	//deal with paused spark applications
+	if _, paused := newApp.Annotations["pausedannotation"]; paused {
+		// Force-set the application status to Paused which handles clean-up
+		if _, err := c.updateApplicationStatusWithRetries(newApp, func(status *v1beta2.SparkApplicationStatus) {
+			status.AppState.State = v1beta2.PausedState
+		}); err != nil {
+			c.recorder.Eventf(
+				newApp,
+				apiv1.EventTypeWarning,
+				"SparkApplicationSpecUpdateFailed",
+				"failed to process spec update for SparkApplication %s: %v",
+				newApp.Name,
+				err)
+			return
+		}
+
+		c.recorder.Eventf(
+			newApp,
+			apiv1.EventTypeNormal,
+			"SparkApplicationSpecUpdateProcessed",
+			"Successfully processed spec update for SparkApplication %s",
+			newApp.Name)
+
+	}
+
 	// The spec has changed. This is currently best effort as we can potentially miss updates
 	// and end up in an inconsistent state.
 	if !equality.Semantic.DeepEqual(oldApp.Spec, newApp.Spec) {
@@ -554,6 +579,12 @@ func (c *Controller) syncSparkApplication(key string) error {
 			appCopy.Status.AppState.ErrorMessage = err.Error()
 		} else {
 			appCopy = c.submitSparkApplication(appCopy)
+		}
+	case v1beta2.PausedState:
+		if err := c.deleteSparkResources(appCopy); err != nil {
+			glog.Errorf("failed to delete resources associated with SparkApplication %s/%s: %v",
+				appCopy.Namespace, appCopy.Name, err)
+			return err
 		}
 	case v1beta2.SucceedingState:
 		if !shouldRetry(appCopy) {

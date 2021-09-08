@@ -316,6 +316,7 @@ const (
 	PendingRerunState     ApplicationStateType = "PENDING_RERUN"
 	InvalidatingState     ApplicationStateType = "INVALIDATING"
 	SucceedingState       ApplicationStateType = "SUCCEEDING"
+	PausedState           ApplicationStateType = "PAUSED"
 	FailingState          ApplicationStateType = "FAILING"
 	UnknownState          ApplicationStateType = "UNKNOWN"
 )
