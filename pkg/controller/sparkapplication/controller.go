@@ -221,8 +221,9 @@ func (c *Controller) onUpdate(oldObj, newObj interface{}) {
 		return
 	}
 
-	//deal with paused spark applications
-	if _, paused := newApp.Annotations["pausedannotation"]; paused {
+	// Deal with paused spark applications
+	// When paused annotation is here, we should switch to paused state
+	if paused, pausedAnnotation := newApp.Annotations["spark.application.state/paused"]; pausedAnnotation && paused == "true" {
 		// Force-set the application status to Paused which handles clean-up
 		if _, err := c.updateApplicationStatusWithRetries(newApp, func(status *v1beta2.SparkApplicationStatus) {
 			status.AppState.State = v1beta2.PausedState
@@ -244,31 +245,32 @@ func (c *Controller) onUpdate(oldObj, newObj interface{}) {
 			"Successfully processed spec update for SparkApplication %s",
 			newApp.Name)
 
-	}
+	} else { // no paused state annotation
 
-	// The spec has changed. This is currently best effort as we can potentially miss updates
-	// and end up in an inconsistent state.
-	if !equality.Semantic.DeepEqual(oldApp.Spec, newApp.Spec) {
-		// Force-set the application status to Invalidating which handles clean-up and application re-run.
-		if _, err := c.updateApplicationStatusWithRetries(newApp, func(status *v1beta2.SparkApplicationStatus) {
-			status.AppState.State = v1beta2.InvalidatingState
-		}); err != nil {
+		// The actual state is paused, we should get out of this state, or the spec has changed, we should update pods.
+		// This is currently best effort as we can potentially miss updates and end up in an inconsistent state.
+		if (oldApp.Status.AppState.State == v1beta2.PausedState) || !equality.Semantic.DeepEqual(oldApp.Spec, newApp.Spec) {
+			// Force-set the application status to Invalidating which handles clean-up and application re-run.
+			if _, err := c.updateApplicationStatusWithRetries(newApp, func(status *v1beta2.SparkApplicationStatus) {
+				status.AppState.State = v1beta2.InvalidatingState
+			}); err != nil {
+				c.recorder.Eventf(
+					newApp,
+					apiv1.EventTypeWarning,
+					"SparkApplicationSpecUpdateFailed",
+					"failed to process spec update for SparkApplication %s: %v",
+					newApp.Name,
+					err)
+				return
+			}
+
 			c.recorder.Eventf(
 				newApp,
-				apiv1.EventTypeWarning,
-				"SparkApplicationSpecUpdateFailed",
-				"failed to process spec update for SparkApplication %s: %v",
-				newApp.Name,
-				err)
-			return
+				apiv1.EventTypeNormal,
+				"SparkApplicationSpecUpdateProcessed",
+				"Successfully processed spec update for SparkApplication %s",
+				newApp.Name)
 		}
-
-		c.recorder.Eventf(
-			newApp,
-			apiv1.EventTypeNormal,
-			"SparkApplicationSpecUpdateProcessed",
-			"Successfully processed spec update for SparkApplication %s",
-			newApp.Name)
 	}
 
 	glog.V(2).Infof("SparkApplication %s/%s was updated, enqueueing it", newApp.Namespace, newApp.Name)
