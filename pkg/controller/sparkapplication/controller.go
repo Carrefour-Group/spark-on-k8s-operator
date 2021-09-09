@@ -221,12 +221,12 @@ func (c *Controller) onUpdate(oldObj, newObj interface{}) {
 		return
 	}
 
-	// Deal with paused spark applications
-	// When paused annotation is here, we should switch to paused state
-	if paused, pausedAnnotation := newApp.Annotations["spark.application.state/paused"]; pausedAnnotation && paused == "true" {
-		// Force-set the application status to Paused which handles clean-up
+	// The spec has changed, we should update pods.
+	// This is currently best effort as we can potentially miss updates and end up in an inconsistent state.
+	if !equality.Semantic.DeepEqual(oldApp.Spec, newApp.Spec) {
+		// Force-set the application status to Invalidating which handles clean-up and application re-run.
 		if _, err := c.updateApplicationStatusWithRetries(newApp, func(status *v1beta2.SparkApplicationStatus) {
-			status.AppState.State = v1beta2.PausedState
+			status.AppState.State = v1beta2.InvalidatingState
 		}); err != nil {
 			c.recorder.Eventf(
 				newApp,
@@ -244,33 +244,6 @@ func (c *Controller) onUpdate(oldObj, newObj interface{}) {
 			"SparkApplicationSpecUpdateProcessed",
 			"Successfully processed spec update for SparkApplication %s",
 			newApp.Name)
-
-	} else { // no paused state annotation
-
-		// The actual state is paused, we should get out of this state, or the spec has changed, we should update pods.
-		// This is currently best effort as we can potentially miss updates and end up in an inconsistent state.
-		if (oldApp.Status.AppState.State == v1beta2.PausedState) || !equality.Semantic.DeepEqual(oldApp.Spec, newApp.Spec) {
-			// Force-set the application status to Invalidating which handles clean-up and application re-run.
-			if _, err := c.updateApplicationStatusWithRetries(newApp, func(status *v1beta2.SparkApplicationStatus) {
-				status.AppState.State = v1beta2.InvalidatingState
-			}); err != nil {
-				c.recorder.Eventf(
-					newApp,
-					apiv1.EventTypeWarning,
-					"SparkApplicationSpecUpdateFailed",
-					"failed to process spec update for SparkApplication %s: %v",
-					newApp.Name,
-					err)
-				return
-			}
-
-			c.recorder.Eventf(
-				newApp,
-				apiv1.EventTypeNormal,
-				"SparkApplicationSpecUpdateProcessed",
-				"Successfully processed spec update for SparkApplication %s",
-				newApp.Name)
-		}
 	}
 
 	glog.V(2).Infof("SparkApplication %s/%s was updated, enqueueing it", newApp.Namespace, newApp.Name)
@@ -575,18 +548,26 @@ func (c *Controller) syncSparkApplication(key string) error {
 	// Take action based on application state.
 	switch appCopy.Status.AppState.State {
 	case v1beta2.NewState:
-		c.recordSparkApplicationEvent(appCopy)
-		if err := c.validateSparkApplication(appCopy); err != nil {
-			appCopy.Status.AppState.State = v1beta2.FailedState
-			appCopy.Status.AppState.ErrorMessage = err.Error()
-		} else {
-			appCopy = c.submitSparkApplication(appCopy)
+		if !c.mayBeSuspend(appCopy) {
+			c.recordSparkApplicationEvent(appCopy)
+			if err := c.validateSparkApplication(appCopy); err != nil {
+				appCopy.Status.AppState.State = v1beta2.FailedState
+				appCopy.Status.AppState.ErrorMessage = err.Error()
+			} else {
+				appCopy = c.submitSparkApplication(appCopy)
+			}
 		}
-	case v1beta2.PausedState:
-		if err := c.deleteSparkResources(appCopy); err != nil {
-			glog.Errorf("failed to delete resources associated with SparkApplication %s/%s: %v",
-				appCopy.Namespace, appCopy.Name, err)
-			return err
+	case v1beta2.SuspendedState:
+		if c.mayBeSuspend(appCopy) {
+			c.recordSparkApplicationEvent(appCopy)
+			if err := c.deleteSparkResources(appCopy); err != nil {
+				glog.Errorf("failed to delete resources associated with SparkApplication %s/%s: %v",
+					appCopy.Namespace, appCopy.Name, err)
+				return err
+			}
+		} else {
+			c.clearStatus(&appCopy.Status)
+			appCopy.Status.AppState.State = v1beta2.PendingRerunState
 		}
 	case v1beta2.SucceedingState:
 		if !shouldRetry(appCopy) {
@@ -601,46 +582,56 @@ func (c *Controller) syncSparkApplication(key string) error {
 			appCopy.Status.AppState.State = v1beta2.PendingRerunState
 		}
 	case v1beta2.FailingState:
-		if !shouldRetry(appCopy) {
-			appCopy.Status.AppState.State = v1beta2.FailedState
-			c.recordSparkApplicationEvent(appCopy)
-		} else if isNextRetryDue(appCopy.Spec.RestartPolicy.OnFailureRetryInterval, appCopy.Status.ExecutionAttempts, appCopy.Status.TerminationTime) {
+		if !c.mayBeSuspend(appCopy) {
+			if !shouldRetry(appCopy) {
+				appCopy.Status.AppState.State = v1beta2.FailedState
+				c.recordSparkApplicationEvent(appCopy)
+			} else if isNextRetryDue(appCopy.Spec.RestartPolicy.OnFailureRetryInterval, appCopy.Status.ExecutionAttempts, appCopy.Status.TerminationTime) {
+				if err := c.deleteSparkResources(appCopy); err != nil {
+					glog.Errorf("failed to delete resources associated with SparkApplication %s/%s: %v",
+						appCopy.Namespace, appCopy.Name, err)
+					return err
+				}
+				appCopy.Status.AppState.State = v1beta2.PendingRerunState
+			}
+		}
+	case v1beta2.FailedSubmissionState:
+		if !c.mayBeSuspend(appCopy) {
+			if !shouldRetry(appCopy) {
+				// App will never be retried. Move to terminal FailedState.
+				appCopy.Status.AppState.State = v1beta2.FailedState
+				c.recordSparkApplicationEvent(appCopy)
+			} else if isNextRetryDue(appCopy.Spec.RestartPolicy.OnSubmissionFailureRetryInterval, appCopy.Status.SubmissionAttempts, appCopy.Status.LastSubmissionAttemptTime) {
+				appCopy = c.submitSparkApplication(appCopy)
+			}
+		}
+	case v1beta2.InvalidatingState:
+		if !c.mayBeSuspend(appCopy) {
+			// Invalidate the current run and enqueue the SparkApplication for re-execution.
 			if err := c.deleteSparkResources(appCopy); err != nil {
 				glog.Errorf("failed to delete resources associated with SparkApplication %s/%s: %v",
 					appCopy.Namespace, appCopy.Name, err)
 				return err
 			}
+			c.clearStatus(&appCopy.Status)
 			appCopy.Status.AppState.State = v1beta2.PendingRerunState
 		}
-	case v1beta2.FailedSubmissionState:
-		if !shouldRetry(appCopy) {
-			// App will never be retried. Move to terminal FailedState.
-			appCopy.Status.AppState.State = v1beta2.FailedState
-			c.recordSparkApplicationEvent(appCopy)
-		} else if isNextRetryDue(appCopy.Spec.RestartPolicy.OnSubmissionFailureRetryInterval, appCopy.Status.SubmissionAttempts, appCopy.Status.LastSubmissionAttemptTime) {
-			appCopy = c.submitSparkApplication(appCopy)
-		}
-	case v1beta2.InvalidatingState:
-		// Invalidate the current run and enqueue the SparkApplication for re-execution.
-		if err := c.deleteSparkResources(appCopy); err != nil {
-			glog.Errorf("failed to delete resources associated with SparkApplication %s/%s: %v",
-				appCopy.Namespace, appCopy.Name, err)
-			return err
-		}
-		c.clearStatus(&appCopy.Status)
-		appCopy.Status.AppState.State = v1beta2.PendingRerunState
 	case v1beta2.PendingRerunState:
-		glog.V(2).Infof("SparkApplication %s/%s is pending rerun", appCopy.Namespace, appCopy.Name)
-		if c.validateSparkResourceDeletion(appCopy) {
-			glog.V(2).Infof("Resources for SparkApplication %s/%s successfully deleted", appCopy.Namespace, appCopy.Name)
-			c.recordSparkApplicationEvent(appCopy)
-			c.clearStatus(&appCopy.Status)
-			appCopy = c.submitSparkApplication(appCopy)
+		if !c.mayBeSuspend(appCopy) {
+			glog.V(2).Infof("SparkApplication %s/%s is pending rerun", appCopy.Namespace, appCopy.Name)
+			if c.validateSparkResourceDeletion(appCopy) {
+				glog.V(2).Infof("Resources for SparkApplication %s/%s successfully deleted", appCopy.Namespace, appCopy.Name)
+				c.recordSparkApplicationEvent(appCopy)
+				c.clearStatus(&appCopy.Status)
+				appCopy = c.submitSparkApplication(appCopy)
+			}
 		}
 	case v1beta2.SubmittedState, v1beta2.RunningState, v1beta2.UnknownState:
-		if err := c.getAndUpdateAppState(appCopy); err != nil {
-			return err
-		}
+		if !c.mayBeSuspend(appCopy) {
+			if err := c.getAndUpdateAppState(appCopy); err != nil {
+				return err
+			}
+		}	
 	case v1beta2.CompletedState, v1beta2.FailedState:
 		if c.hasApplicationExpired(app) {
 			glog.Infof("Garbage collecting expired SparkApplication %s/%s", app.Namespace, app.Name)
@@ -661,6 +652,15 @@ func (c *Controller) syncSparkApplication(key string) error {
 	}
 
 	return nil
+}
+
+func (c *Controller) mayBeSuspend(app *v1beta2.SparkApplication) bool {
+	if paused, pausedAnnotation := app.Annotations["spark.application.state/suspended"]; pausedAnnotation && paused == "true" {
+		app.Status.AppState.State = v1beta2.SuspendedState
+		return true
+	} else {
+		return false
+	}
 }
 
 // Helper func to determine if the next retry the SparkApplication is due now.
@@ -995,6 +995,13 @@ func (c *Controller) recordSparkApplicationEvent(app *v1beta2.SparkApplication) 
 			apiv1.EventTypeWarning,
 			"SparkApplicationPendingRerun",
 			"SparkApplication %s is pending rerun",
+			app.Name)
+	case v1beta2.SuspendedState:
+		c.recorder.Eventf(
+			app,
+			apiv1.EventTypeNormal,
+			"SparkApplicationSuspended",
+			"SparkApplication %s is suspended",
 			app.Name)
 	}
 }
