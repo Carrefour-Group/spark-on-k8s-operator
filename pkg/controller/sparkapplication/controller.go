@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"os/exec"
 	"regexp"
+	"strings"
 	"time"
 
 	"github.com/golang/glog"
@@ -756,7 +757,7 @@ func (c *Controller) submitSparkApplication(app *v1beta2.SparkApplication) *v1be
 	c.recordSparkApplicationEvent(app)
 
 	service, err := createSparkUIService(app, c.kubeClient)
-	if err != nil {
+	if err != nil && !strings.Contains(err.Error(), "already exists"){
 		glog.Errorf("failed to create UI service for SparkApplication %s/%s: %v", app.Namespace, app.Name, err)
 	} else {
 		app.Status.DriverInfo.WebUIServiceName = service.serviceName
@@ -765,7 +766,7 @@ func (c *Controller) submitSparkApplication(app *v1beta2.SparkApplication) *v1be
 		// Create UI Ingress if ingress-format is set.
 		if c.ingressURLFormat != "" {
 			ingress, err := createSparkUIIngress(app, *service, c.ingressURLFormat, c.kubeClient)
-			if err != nil {
+			if err != nil && !strings.Contains(err.Error(), "already exists"){
 				glog.Errorf("failed to create UI Ingress for SparkApplication %s/%s: %v", app.Namespace, app.Name, err)
 			} else {
 				app.Status.DriverInfo.WebUIIngressAddress = ingress.ingressURL
