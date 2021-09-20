@@ -18,6 +18,7 @@ package sparkapplication
 
 import (
 	"fmt"
+	"k8s.io/apimachinery/pkg/api/errors"
 	"regexp"
 	"strconv"
 
@@ -64,7 +65,7 @@ func createSparkUIIngress(app *v1beta2.SparkApplication, service SparkService, i
 	ingressURL := getSparkUIingressURL(ingressURLFormat, app.GetName())
 	ingressResourceAnnotations := getIngressResourceAnnotations(app)
 	ingressTlsHosts := getIngressTlsHosts(app)
-	ingress := extensions.Ingress{
+	ingress := &extensions.Ingress{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:            getDefaultUIIngressName(app),
 			Namespace:       app.Namespace,
@@ -97,12 +98,25 @@ func createSparkUIIngress(app *v1beta2.SparkApplication, service SparkService, i
 	if len(ingressTlsHosts) != 0 {
 		ingress.Spec.TLS = ingressTlsHosts
 	}
-	glog.Infof("Creating an Ingress %s for the Spark UI for application %s", ingress.Name, app.Name)
-	_, err := kubeClient.ExtensionsV1beta1().Ingresses(ingress.Namespace).Create(&ingress)
+
+	ingressFound, err := kubeClient.ExtensionsV1beta1().Ingresses(app.Namespace).Get(ingress.Name, metav1.GetOptions{})
 
 	if err != nil {
-		return nil, err
+		if errors.IsNotFound(err) {
+			glog.Infof("Creating an Ingress %s for the Spark UI for application %s", ingress.Name, app.Name)
+			ingress, err = kubeClient.ExtensionsV1beta1().Ingresses(ingress.Namespace).Create(ingress)
+			if err != nil {
+				return nil, err
+			}
+		} else {
+			if err != nil {
+				return nil, err
+			}
+		}
+	} else {
+		ingress = ingressFound
 	}
+
 	return &SparkIngress{
 		ingressName: ingress.Name,
 		ingressURL:  ingressURL,
@@ -148,10 +162,21 @@ func createSparkUIService(
 		},
 	}
 
-	glog.Infof("Creating a service %s for the Spark UI for application %s", service.Name, app.Name)
-	service, err = kubeClient.CoreV1().Services(app.Namespace).Create(service)
+	serviceFound, err := kubeClient.CoreV1().Services(app.Namespace).Get(service.Name, metav1.GetOptions{})
 	if err != nil {
-		return nil, err
+		if errors.IsNotFound(err) {
+			glog.Infof("Creating a service %s for the Spark UI for application %s", service.Name, app.Name)
+			service, err = kubeClient.CoreV1().Services(app.Namespace).Create(service)
+			if err != nil {
+				return nil, err
+			}
+		} else {
+			if err != nil {
+				return nil, err
+			}
+		}
+	} else {
+		service = serviceFound
 	}
 
 	return &SparkService{
