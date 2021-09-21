@@ -609,10 +609,11 @@ func (c *Controller) syncSparkApplication(key string) error {
 					appCopy.Namespace, appCopy.Name, err)
 				return err
 			}
+			// Clear status
+			c.clearStatus(&appCopy.Status)
 		} else {
 			// Get out of suspended state, go to pendingState.
-			appCopy.Status.AppState.State = v1beta2.PendingRerunState
-			c.clearStatus(&appCopy.Status)
+			appCopy.Status.AppState.State = v1beta2.InvalidatingState
 		}
 	case v1beta2.InvalidatingState:
 		if !c.mayBeSuspend(appCopy) {
@@ -640,7 +641,7 @@ func (c *Controller) syncSparkApplication(key string) error {
 			if err := c.getAndUpdateAppState(appCopy); err != nil {
 				return err
 			}
-		}	
+		}
 	case v1beta2.CompletedState, v1beta2.FailedState:
 		if c.hasApplicationExpired(app) {
 			glog.Infof("Garbage collecting expired SparkApplication %s/%s", app.Namespace, app.Name)
@@ -757,7 +758,7 @@ func (c *Controller) submitSparkApplication(app *v1beta2.SparkApplication) *v1be
 	c.recordSparkApplicationEvent(app)
 
 	service, err := createSparkUIService(app, c.kubeClient)
-	if err != nil && !strings.Contains(err.Error(), "already exists"){
+	if err != nil && !strings.Contains(err.Error(), "already exists") {
 		glog.Errorf("failed to create UI service for SparkApplication %s/%s: %v", app.Namespace, app.Name, err)
 	} else {
 		app.Status.DriverInfo.WebUIServiceName = service.serviceName
@@ -766,7 +767,7 @@ func (c *Controller) submitSparkApplication(app *v1beta2.SparkApplication) *v1be
 		// Create UI Ingress if ingress-format is set.
 		if c.ingressURLFormat != "" {
 			ingress, err := createSparkUIIngress(app, *service, c.ingressURLFormat, c.kubeClient)
-			if err != nil && !strings.Contains(err.Error(), "already exists"){
+			if err != nil && !strings.Contains(err.Error(), "already exists") {
 				glog.Errorf("failed to create UI Ingress for SparkApplication %s/%s: %v", app.Namespace, app.Name, err)
 			} else {
 				app.Status.DriverInfo.WebUIIngressAddress = ingress.ingressURL
@@ -1061,6 +1062,16 @@ func (c *Controller) clearStatus(status *v1beta2.SparkApplicationStatus) {
 		status.DriverInfo = v1beta2.DriverInfo{}
 		status.AppState.ErrorMessage = ""
 		status.ExecutorState = nil
+	} else if status.AppState.State == v1beta2.SuspendedState {
+		status.SparkApplicationID = ""
+		status.SubmissionAttempts = 0
+		status.ExecutionAttempts = 0
+		status.SubmissionID = ""
+		status.LastSubmissionAttemptTime = metav1.Time{}
+		status.TerminationTime = metav1.Time{}
+		status.AppState.ErrorMessage = ""
+		status.ExecutorState = nil
+		status.DriverInfo = v1beta2.DriverInfo{}
 	}
 }
 
