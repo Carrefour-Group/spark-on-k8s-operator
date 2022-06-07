@@ -2,10 +2,10 @@ steps:
   - name: 'gcr.io/cloud-builders/docker:latest'
     args: ['build',
            '-t',
-           'eu.gcr.io/$PROJECT_ID/phenix/operators/spark-operator:$TAG_NAME',
+           'europe-west1-docker.pkg.dev/$PROJECT_ID/phenix/operators/spark-operator:$TAG_NAME',
            '.']
 images: [
-  'eu.gcr.io/$PROJECT_ID/phenix/operators/spark-operator:$TAG_NAME'
+  'europe-west1-docker.pkg.dev/$PROJECT_ID/phenix/operators/spark-operator:$TAG_NAME'
 ]
 
 timeout: 1800s

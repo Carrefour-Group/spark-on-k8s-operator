@@ -2,14 +2,14 @@ steps:
   - name: 'gcr.io/cloud-builders/docker:latest'
     args: ['build',
            '-t',
-           'eu.gcr.io/$PROJECT_ID/phenix/operators/spark-operator:${_PHENIX_SPARK_ON_K8S}',
+           'europe-west1-docker.pkg.dev/$PROJECT_ID/phenix/operators/spark-operator:${_PHENIX_SPARK_ON_K8S}',
            '.']
 
 substitutions:
   _PHENIX_SPARK_ON_K8S: 'v1beta2-1.1.2-2.4.5-phenix-SNAPSHOT-1.3'
 
 images: [
-  'eu.gcr.io/$PROJECT_ID/phenix/operators/spark-operator:${_PHENIX_SPARK_ON_K8S}'
+  'europe-west1-docker.pkg.dev/$PROJECT_ID/phenix/operators/spark-operator:${_PHENIX_SPARK_ON_K8S}'
 ]
 
 timeout: 1800s
