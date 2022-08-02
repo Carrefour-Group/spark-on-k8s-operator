@@ -73,6 +73,7 @@ var (
 	metricsPort                    = flag.String("metrics-port", "10254", "Port for the metrics endpoint.")
 	metricsEndpoint                = flag.String("metrics-endpoint", "/metrics", "Metrics endpoint.")
 	metricsPrefix                  = flag.String("metrics-prefix", "", "Prefix for the metrics.")
+	ingressClassName               = flag.String("ingress-class-name", "", "Set ingressClassName for ingress resources created.")
 	metricsLabels                  util.ArrayFlags
 	metricsJobStartLatencyBuckets  util.HistogramBuckets = util.DefaultJobStartLatencyBuckets
 )
@@ -153,6 +154,10 @@ func main() {
 		glog.Fatal(err)
 	}
 
+	if err = util.InitializeIngressCapabilities(kubeClient); err != nil {
+		glog.Fatalf("Error retrieving Kubernetes cluster capabilities: %s", err.Error())
+	}
+
 	var batchSchedulerMgr *batchscheduler.SchedulerManager
 	if *enableBatchScheduler {
 		if !*enableWebhook {
@@ -185,7 +190,7 @@ func main() {
 	}
 
 	applicationController := sparkapplication.NewController(
-		crClient, kubeClient, crInformerFactory, podInformerFactory, metricConfig, namespaceConfig, *ingressURLFormat, batchSchedulerMgr)
+		crClient, kubeClient, crInformerFactory, podInformerFactory, metricConfig, namespaceConfig, *ingressURLFormat, *ingressClassName, batchSchedulerMgr)
 	scheduledApplicationController := scheduledsparkapplication.NewController(
 		crClient, kubeClient, apiExtensionsClient, crInformerFactory, clock.RealClock{})
 

@@ -25,7 +25,7 @@ require (
 	golang.org/x/net v0.0.0-20200202094626-16171245cfb2
 	golang.org/x/sync v0.0.0-20190911185100-cd5d95a43a6e
 	golang.org/x/time v0.0.0-20190308202827-9d24e82272b4
-	k8s.io/api v0.16.6
+	k8s.io/api v0.19.6
 	k8s.io/apiextensions-apiserver v0.0.0
 	k8s.io/apimachinery v0.16.9-beta.0
 	k8s.io/client-go v0.16.9-beta.0
@@ -36,7 +36,7 @@ require (
 )
 
 replace (
-	k8s.io/api => k8s.io/api v0.16.6
+	k8s.io/api => k8s.io/api v0.19.6
 	k8s.io/apiextensions-apiserver => k8s.io/apiextensions-apiserver v0.16.6
 	k8s.io/apimachinery => k8s.io/apimachinery v0.16.6
 	k8s.io/apiserver => k8s.io/apiserver v0.16.6

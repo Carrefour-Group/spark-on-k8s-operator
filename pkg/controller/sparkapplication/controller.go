@@ -77,6 +77,7 @@ type Controller struct {
 	applicationLister crdlisters.SparkApplicationLister
 	podLister         v1.PodLister
 	ingressURLFormat  string
+	ingressClassName  string
 	batchSchedulerMgr *batchscheduler.SchedulerManager
 }
 
@@ -89,6 +90,7 @@ func NewController(
 	metricsConfig *util.MetricConfig,
 	namespaceConfig *util.NamespaceConfig,
 	ingressURLFormat string,
+	ingressClassName string,
 	batchSchedulerMgr *batchscheduler.SchedulerManager) *Controller {
 	crdscheme.AddToScheme(scheme.Scheme)
 
@@ -99,7 +101,7 @@ func NewController(
 	})
 	recorder := eventBroadcaster.NewRecorder(scheme.Scheme, apiv1.EventSource{Component: "spark-operator"})
 
-	return newSparkApplicationController(crdClient, kubeClient, crdInformerFactory, podInformerFactory, recorder, namespaceConfig, metricsConfig, ingressURLFormat, batchSchedulerMgr)
+	return newSparkApplicationController(crdClient, kubeClient, crdInformerFactory, podInformerFactory, recorder, namespaceConfig, metricsConfig, ingressURLFormat, ingressClassName, batchSchedulerMgr)
 }
 
 func newSparkApplicationController(
@@ -111,6 +113,7 @@ func newSparkApplicationController(
 	namespaceFilterConfig *util.NamespaceConfig,
 	metricsConfig *util.MetricConfig,
 	ingressURLFormat string,
+	ingressClassName string,
 	batchSchedulerMgr *batchscheduler.SchedulerManager) *Controller {
 	queue := workqueue.NewNamedRateLimitingQueue(&workqueue.BucketRateLimiter{Limiter: rate.NewLimiter(rate.Limit(queueTokenRefillRate), queueTokenBucketSize)},
 		"spark-application-controller")
@@ -121,6 +124,7 @@ func newSparkApplicationController(
 		recorder:          eventRecorder,
 		queue:             queue,
 		ingressURLFormat:  ingressURLFormat,
+		ingressClassName:  ingressClassName,
 		batchSchedulerMgr: batchSchedulerMgr,
 	}
 
@@ -766,12 +770,17 @@ func (c *Controller) submitSparkApplication(app *v1beta2.SparkApplication) *v1be
 		app.Status.DriverInfo.WebUIAddress = fmt.Sprintf("%s:%d", service.serviceIP, app.Status.DriverInfo.WebUIPort)
 		// Create UI Ingress if ingress-format is set.
 		if c.ingressURLFormat != "" {
-			ingress, err := createSparkUIIngress(app, *service, c.ingressURLFormat, c.kubeClient)
+			ingressURL, err := getSparkUIingressURL(c.ingressURLFormat, app.GetName(), app.GetNamespace())
 			if err != nil && !strings.Contains(err.Error(), "already exists") {
-				glog.Errorf("failed to create UI Ingress for SparkApplication %s/%s: %v", app.Namespace, app.Name, err)
+				glog.Errorf("failed to get the spark ingress url %s/%s: %v", app.Namespace, app.Name, err)
 			} else {
-				app.Status.DriverInfo.WebUIIngressAddress = ingress.ingressURL
-				app.Status.DriverInfo.WebUIIngressName = ingress.ingressName
+				ingress, err := createSparkUIIngress(app, *service, c.ingressURLFormat, ingressURL, c.ingressClassName, c.kubeClient)
+				if err != nil && !strings.Contains(err.Error(), "already exists") {
+					glog.Errorf("failed to create UI Ingress for SparkApplication %s/%s: %v", app.Namespace, app.Name, err)
+				} else {
+					app.Status.DriverInfo.WebUIIngressAddress = ingress.ingressURL
+					app.Status.DriverInfo.WebUIIngressName = ingress.ingressName
+				}
 			}
 		}
 	}
