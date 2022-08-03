@@ -17,6 +17,7 @@ limitations under the License.
 package sparkapplication
 
 import (
+	"context"
 	"fmt"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"net/url"
@@ -81,7 +82,7 @@ type SparkIngress struct {
 	ingressURL       string
 	ingressClassName string
 	annotations      map[string]string
-	ingressTLS       []extensions.IngressTLS
+	ingressTLS       []networkingv1.IngressTLS
 }
 
 func createSparkUIIngress(app *v1beta2.SparkApplication, service SparkService, ingressURLFormat string, ingressURL *url.URL, ingressClassName string, kubeClient clientset.Interface) (*SparkIngress, error) {
@@ -201,15 +202,15 @@ func createSparkUIIngress_legacy(app *v1beta2.SparkApplication, service SparkSer
 		ingress.ObjectMeta.Annotations = ingressResourceAnnotations
 	}
 	if len(ingressTlsHosts) != 0 {
-		ingress.Spec.TLS = ingressTlsHosts
+		ingress.Spec.TLS = convertIngressTlsHostsToLegacy(ingressTlsHosts)
 	}
 
-	ingressFound, err := kubeClient.ExtensionsV1beta1().Ingresses(app.Namespace).Get(ingress.Name, metav1.GetOptions{})
+	ingressFound, err := kubeClient.ExtensionsV1beta1().Ingresses(app.Namespace).Get(context.TODO(), ingress.Name, metav1.GetOptions{})
 
 	if err != nil {
 		if errors.IsNotFound(err) {
 			glog.Infof("Creating an Ingress %s for the Spark UI for application %s", ingress.Name, app.Name)
-			ingress, err = kubeClient.ExtensionsV1beta1().Ingresses(ingress.Namespace).Create(ingress)
+			ingress, err = kubeClient.ExtensionsV1beta1().Ingresses(ingress.Namespace).Create(context.TODO(), ingress, metav1.CreateOptions{})
 			if err != nil {
 				return nil, err
 			}
@@ -226,8 +227,19 @@ func createSparkUIIngress_legacy(app *v1beta2.SparkApplication, service SparkSer
 		ingressName: ingress.Name,
 		ingressURL:  ingressURL,
 		annotations: ingress.Annotations,
-		ingressTLS:  ingress.Spec.TLS,
+		ingressTLS:  ingressTlsHosts,
 	}, nil
+}
+
+func convertIngressTlsHostsToLegacy(ingressTlsHosts []networkingv1.IngressTLS) []extensions.IngressTLS {
+	var ingressTlsHosts_legacy []extensions.IngressTLS
+	for _, ingressTlsHost := range ingressTlsHosts {
+		ingressTlsHosts_legacy = append(ingressTlsHosts_legacy, extensions.IngressTLS{
+			Hosts:      ingressTlsHost.Hosts,
+			SecretName: ingressTlsHost.SecretName,
+		})
+	}
+	return ingressTlsHosts_legacy
 }
 
 func createSparkUIService(
@@ -267,11 +279,11 @@ func createSparkUIService(
 		},
 	}
 
-	serviceFound, err := kubeClient.CoreV1().Services(app.Namespace).Get(service.Name, metav1.GetOptions{})
+	serviceFound, err := kubeClient.CoreV1().Services(app.Namespace).Get(context.TODO(), service.Name, metav1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			glog.Infof("Creating a service %s for the Spark UI for application %s", service.Name, app.Name)
-			service, err = kubeClient.CoreV1().Services(app.Namespace).Create(service)
+			service, err = kubeClient.CoreV1().Services(app.Namespace).Create(context.TODO(), service, metav1.CreateOptions{})
 			if err != nil {
 				return nil, err
 			}
