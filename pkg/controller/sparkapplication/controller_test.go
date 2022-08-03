@@ -17,6 +17,7 @@ limitations under the License.
 package sparkapplication
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -50,23 +51,25 @@ func newFakeController(app *v1beta2.SparkApplication, pods ...*apiv1.Pod) (*Cont
 	informerFactory := crdinformers.NewSharedInformerFactory(crdClient, 0*time.Second)
 	recorder := record.NewFakeRecorder(3)
 
-	kubeClient.CoreV1().Nodes().Create(&apiv1.Node{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: "node1",
-		},
-		Status: apiv1.NodeStatus{
-			Addresses: []apiv1.NodeAddress{
-				{
-					Type:    apiv1.NodeExternalIP,
-					Address: "12.34.56.78",
+	kubeClient.CoreV1().Nodes().Create(context.TODO(),
+		&apiv1.Node{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "node1",
+			},
+			Status: apiv1.NodeStatus{
+				Addresses: []apiv1.NodeAddress{
+					{
+						Type:    apiv1.NodeExternalIP,
+						Address: "12.34.56.78",
+					},
 				},
 			},
 		},
-	})
+		metav1.CreateOptions{})
 
 	podInformerFactory := informers.NewSharedInformerFactory(kubeClient, 0*time.Second)
 	controller := newSparkApplicationController(crdClient, kubeClient, informerFactory, podInformerFactory, recorder, nil,
-		&util.MetricConfig{}, "", nil)
+		&util.MetricConfig{}, "", "", nil)
 
 	informer := informerFactory.Sparkoperator().V1beta2().SparkApplications().Informer()
 	if app != nil {
@@ -1407,10 +1410,10 @@ func TestSyncSparkApplication_ExecutingState(t *testing.T) {
 			t.Fatal(err)
 		}
 		if test.driverPod != nil {
-			ctrl.kubeClient.CoreV1().Pods(app.Namespace).Create(test.driverPod)
+			ctrl.kubeClient.CoreV1().Pods(app.Namespace).Create(context.TODO(), test.driverPod, metav1.CreateOptions{})
 		}
 		if test.executorPod != nil {
-			ctrl.kubeClient.CoreV1().Pods(app.Namespace).Create(test.executorPod)
+			ctrl.kubeClient.CoreV1().Pods(app.Namespace).Create(context.TODO(), test.executorPod, metav1.CreateOptions{})
 		}
 
 		err = ctrl.syncSparkApplication(fmt.Sprintf("%s/%s", app.Namespace, app.Name))

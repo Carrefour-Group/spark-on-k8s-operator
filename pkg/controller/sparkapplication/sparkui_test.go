@@ -17,12 +17,14 @@ limitations under the License.
 package sparkapplication
 
 import (
+	"context"
 	"fmt"
+	networkingv1 "k8s.io/api/networking/v1"
+	"net/url"
 	"reflect"
 	"testing"
 
 	apiv1 "k8s.io/api/core/v1"
-	extensions "k8s.io/api/extensions/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/client-go/kubernetes/fake"
@@ -53,7 +55,7 @@ func TestCreateSparkUIService(t *testing.T) {
 		}
 		service, err := fakeClient.CoreV1().
 			Services(test.app.Namespace).
-			Get(sparkService.serviceName, metav1.GetOptions{})
+			Get(context.TODO(), sparkService.serviceName, metav1.GetOptions{})
 		if err != nil {
 			if test.expectError {
 				return
@@ -208,11 +210,16 @@ func TestCreateSparkUIIngress(t *testing.T) {
 		expectError     bool
 	}
 
-	testFn := func(test testcase, t *testing.T) {
+	testFn := func(test testcase, t *testing.T, ingressURLFormat string, ingressClassName string) {
 		fakeClient := fake.NewSimpleClientset()
 		ingressFormat := "{{$appName}}.ingress.clusterName.com"
 		sparkService, err := createSparkUIService(test.app, fakeClient)
-		sparkIngress, err := createSparkUIIngress(test.app, *sparkService, ingressFormat, fakeClient)
+		ingressURL, err := getSparkUIingressURL(ingressURLFormat, test.app.Name, test.app.Namespace)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		sparkIngress, err := createSparkUIIngress(test.app, *sparkService, ingressFormat, ingressURL, ingressClassName, fakeClient)
 		if err != nil {
 			if test.expectError {
 				return
@@ -220,35 +227,35 @@ func TestCreateSparkUIIngress(t *testing.T) {
 			t.Fatal(err)
 		}
 		if sparkIngress.ingressName != test.expectedIngress.ingressName {
-			t.Errorf("Ingress name wanted %s got %s", test.expectedIngress.ingressName, sparkIngress.ingressName)
+			t.Errorf("<%s> Ingress name wanted %s got %s", test.name, test.expectedIngress.ingressName, sparkIngress.ingressName)
 		}
 		if sparkIngress.ingressURL != test.expectedIngress.ingressURL {
-			t.Errorf("Ingress name wanted %s got %s", test.expectedIngress.ingressURL, sparkIngress.ingressURL)
+			t.Errorf("<%s> Ingress name wanted %s got %s", test.name, test.expectedIngress.ingressURL, sparkIngress.ingressURL)
 		}
 		ingress, err := fakeClient.ExtensionsV1beta1().Ingresses(test.app.Namespace).
-			Get(sparkIngress.ingressName, metav1.GetOptions{})
+			Get(context.TODO(), sparkIngress.ingressName, metav1.GetOptions{})
 		if err != nil {
 			t.Fatal(err)
 		}
 		if len(ingress.Annotations) != 0 {
 			for key, value := range ingress.Annotations {
 				if test.expectedIngress.annotations[key] != ingress.Annotations[key] {
-					t.Errorf("Expected annotation: %s=%s but found : %s=%s", key, value, key, ingress.Annotations[key])
+					t.Errorf("<%s> Expected annotation: %s=%s but found : %s=%s", test.name, key, value, key, ingress.Annotations[key])
 				}
 			}
 		}
 		if len(ingress.Spec.TLS) != 0 {
 			for _, ingressTls := range ingress.Spec.TLS {
 				if ingressTls.Hosts[0] != test.expectedIngress.ingressTLS[0].Hosts[0] {
-					t.Errorf("Expected ingressTls host: %s but found : %s", test.expectedIngress.ingressTLS[0].Hosts[0], ingressTls.Hosts[0])
+					t.Errorf("<%s> Expected ingressTls host: %s but found : %s", test.name, test.expectedIngress.ingressTLS[0].Hosts[0], ingressTls.Hosts[0])
 				}
 				if ingressTls.SecretName != test.expectedIngress.ingressTLS[0].SecretName {
-					t.Errorf("Expected ingressTls secretName: %s but found : %s", test.expectedIngress.ingressTLS[0].SecretName, ingressTls.SecretName)
+					t.Errorf("<%s> Expected ingressTls secretName: %s but found : %s", test.name, test.expectedIngress.ingressTLS[0].SecretName, ingressTls.SecretName)
 				}
 			}
 		}
 		if ingress.Labels[config.SparkAppNameLabel] != test.app.Name {
-			t.Errorf("Ingress of app %s has the wrong labels", test.app.Name)
+			t.Errorf("<%s> Ingress of app %s has the wrong labels", test.name, test.app.Name)
 		}
 
 		if len(ingress.Spec.Rules) != 1 {
@@ -256,7 +263,7 @@ func TestCreateSparkUIIngress(t *testing.T) {
 		}
 		ingressRule := ingress.Spec.Rules[0]
 		if ingressRule.Host != test.expectedIngress.ingressURL {
-			t.Errorf("Ingress of app %s has the wrong host %s", test.expectedIngress.ingressURL, ingressRule.Host)
+			t.Errorf("<%s> Ingress of app %s has the wrong host %s", test.name, test.expectedIngress.ingressURL, ingressRule.Host)
 		}
 
 		if len(ingressRule.IngressRuleValue.HTTP.Paths) != 1 {
@@ -264,17 +271,17 @@ func TestCreateSparkUIIngress(t *testing.T) {
 		}
 		ingressPath := ingressRule.IngressRuleValue.HTTP.Paths[0]
 		if ingressPath.Backend.ServiceName != sparkService.serviceName {
-			t.Errorf("Service name wanted %s got %s", sparkService.serviceName, ingressPath.Backend.ServiceName)
+			t.Errorf("<%s> Service name wanted %s got %s", test.name, sparkService.serviceName, ingressPath.Backend.ServiceName)
 		}
 		if ingressPath.Backend.ServicePort.IntVal != sparkService.servicePort {
-			t.Errorf("Service port wanted %v got %v", sparkService.servicePort, ingressPath.Backend.ServicePort)
+			t.Errorf("<%s> Service port wanted %v got %v", test.name, sparkService.servicePort, ingressPath.Backend.ServicePort)
 		}
 	}
 
 	var appPort int32 = 80
 	app1 := &v1beta2.SparkApplication{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "foo",
+			Name:      "app1",
 			Namespace: "default",
 			UID:       "foo-123",
 		},
@@ -287,7 +294,7 @@ func TestCreateSparkUIIngress(t *testing.T) {
 	}
 	app2 := &v1beta2.SparkApplication{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "foo",
+			Name:      "app2",
 			Namespace: "default",
 			UID:       "foo-123",
 		},
@@ -309,7 +316,7 @@ func TestCreateSparkUIIngress(t *testing.T) {
 	}
 	app3 := &v1beta2.SparkApplication{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "foo",
+			Name:      "app3",
 			Namespace: "default",
 			UID:       "foo-123",
 		},
@@ -320,7 +327,7 @@ func TestCreateSparkUIIngress(t *testing.T) {
 					"kubernetes.io/ingress.class":                    "nginx",
 					"nginx.ingress.kubernetes.io/force-ssl-redirect": "true",
 				},
-				IngressTLS: []extensions.IngressTLS{
+				IngressTLS: []networkingv1.IngressTLS{
 					{Hosts: []string{"host1", "host2"}, SecretName: "secret"},
 				},
 			},
@@ -334,7 +341,7 @@ func TestCreateSparkUIIngress(t *testing.T) {
 	}
 	app4 := &v1beta2.SparkApplication{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "foo",
+			Name:      "app4",
 			Namespace: "default",
 			UID:       "foo-123",
 		},
@@ -344,7 +351,7 @@ func TestCreateSparkUIIngress(t *testing.T) {
 				IngressAnnotations: map[string]string{
 					"kubernetes.io/ingress.class": "nginx",
 				},
-				IngressTLS: []extensions.IngressTLS{
+				IngressTLS: []networkingv1.IngressTLS{
 					{Hosts: []string{"host1", "host2"}, SecretName: ""},
 				},
 			},
@@ -389,7 +396,7 @@ func TestCreateSparkUIIngress(t *testing.T) {
 					"kubernetes.io/ingress.class":                    "nginx",
 					"nginx.ingress.kubernetes.io/force-ssl-redirect": "true",
 				},
-				ingressTLS: []extensions.IngressTLS{
+				ingressTLS: []networkingv1.IngressTLS{
 					{Hosts: []string{"host1", "host2"}, SecretName: "secret"},
 				},
 			},
@@ -400,12 +407,12 @@ func TestCreateSparkUIIngress(t *testing.T) {
 			app:  app4,
 			expectedIngress: SparkIngress{
 				ingressName: fmt.Sprintf("%s-ui-ingress", app4.GetName()),
-				ingressURL:  app3.GetName() + ".ingress.clusterName.com",
+				ingressURL:  app4.GetName() + ".ingress.clusterName.com",
 				annotations: map[string]string{
 					"kubernetes.io/ingress.class":                    "nginx",
 					"nginx.ingress.kubernetes.io/force-ssl-redirect": "true",
 				},
-				ingressTLS: []extensions.IngressTLS{
+				ingressTLS: []networkingv1.IngressTLS{
 					{Hosts: []string{"host1", "host2"}, SecretName: ""},
 				},
 			},
@@ -413,6 +420,60 @@ func TestCreateSparkUIIngress(t *testing.T) {
 		},
 	}
 	for _, test := range testcases {
-		testFn(test, t)
+		testFn(test, t, "{{$appName}}.ingress.clusterName.com", "")
 	}
+
+	testcases = []testcase{
+		{
+			name: "simple ingress object with ingress URL Format with path",
+			app:  app1,
+			expectedIngress: SparkIngress{
+				ingressName: fmt.Sprintf("%s-ui-ingress", app1.GetName()),
+				ingressURL:  app1.GetName() + ".ingress.clusterName.com",
+				annotations: map[string]string{
+					"nginx.ingress.kubernetes.io/rewrite-target": "/$2",
+				},
+			},
+			expectError: false,
+		},
+	}
+
+	for _, test := range testcases {
+		testFn(test, t, "ingress.clusterName.com/{{$appNamespace}}/{{$appName}}", "")
+	}
+
+	testcases = []testcase{
+		{
+			name: "simple ingress object with ingressClassName set",
+			app:  app1,
+			expectedIngress: SparkIngress{
+				ingressName:      fmt.Sprintf("%s-ui-ingress", app1.GetName()),
+				ingressURL:       "app1.ingress.clusterName.com",
+				ingressClassName: "nginx",
+			},
+			expectError: false,
+		},
+	}
+	for _, test := range testcases {
+		testFn(test, t, "{{$appName}}.ingress.clusterName.com", "nginx")
+	}
+
+}
+
+func parseURLAndAssertError(testURL string, t *testing.T) *url.URL {
+	fallbackURL, _ := url.Parse("http://example.com")
+	parsedURL, err := url.Parse(testURL)
+	if err != nil {
+		t.Errorf("failed to parse the url: %s", testURL)
+		return fallbackURL
+	}
+	if parsedURL.Scheme == "" {
+		//url does not contain any scheme, adding http:// so url.Parse can function correctly
+		parsedURL, err = url.Parse("http://" + testURL)
+		if err != nil {
+			t.Errorf("failed to parse the url: %s", testURL)
+			return fallbackURL
+		}
+	}
+	return parsedURL
 }

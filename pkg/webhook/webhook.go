@@ -417,7 +417,7 @@ func (wh *WebHook) selfRegistration(webhookConfigName string) error {
 	validatingWebhooks := []arv1.ValidatingWebhook{validatingWebhook}
 	context.TODO()
 
-	mutatingExisting, mutatingGetErr := mwcClient.Get(webhookConfigName, metav1.GetOptions{})
+	mutatingExisting, mutatingGetErr := mwcClient.Get(context.TODO(), webhookConfigName, metav1.GetOptions{})
 	if mutatingGetErr != nil {
 		if !errors.IsNotFound(mutatingGetErr) {
 			return mutatingGetErr
@@ -430,7 +430,7 @@ func (wh *WebHook) selfRegistration(webhookConfigName string) error {
 			},
 			Webhooks: mutatingWebhooks,
 		}
-		if _, err := mwcClient.Create(webhookConfig); err != nil {
+		if _, err := mwcClient.Create(context.TODO(), webhookConfig, metav1.CreateOptions{}); err != nil {
 			return err
 		}
 	} else {
@@ -438,14 +438,14 @@ func (wh *WebHook) selfRegistration(webhookConfigName string) error {
 		glog.Info("Updating existing MutatingWebhookConfiguration for the Spark pod admission webhook")
 		if !equality.Semantic.DeepEqual(mutatingWebhooks, mutatingExisting.Webhooks) {
 			mutatingExisting.Webhooks = mutatingWebhooks
-			if _, err := mwcClient.Update(mutatingExisting); err != nil {
+			if _, err := mwcClient.Update(context.TODO(), mutatingExisting, metav1.UpdateOptions{}); err != nil {
 				return err
 			}
 		}
 	}
 
 	if wh.enableResourceQuotaEnforcement {
-		validatingExisting, validatingGetErr := vwcClient.Get(webhookConfigName, metav1.GetOptions{})
+		validatingExisting, validatingGetErr := vwcClient.Get(context.TODO(), webhookConfigName, metav1.GetOptions{})
 		if validatingGetErr != nil {
 			if !errors.IsNotFound(validatingGetErr) {
 				return validatingGetErr
@@ -458,7 +458,7 @@ func (wh *WebHook) selfRegistration(webhookConfigName string) error {
 				},
 				Webhooks: validatingWebhooks,
 			}
-			if _, err := vwcClient.Create(webhookConfig); err != nil {
+			if _, err := vwcClient.Create(context.TODO(), webhookConfig, metav1.CreateOptions{}); err != nil {
 				return err
 			}
 
@@ -467,7 +467,7 @@ func (wh *WebHook) selfRegistration(webhookConfigName string) error {
 			glog.Info("Updating existing ValidatingWebhookConfiguration for the SparkApplication resource quota enforcement webhook")
 			if !equality.Semantic.DeepEqual(validatingWebhooks, validatingExisting.Webhooks) {
 				validatingExisting.Webhooks = validatingWebhooks
-				if _, err := vwcClient.Update(validatingExisting); err != nil {
+				if _, err := vwcClient.Update(context.TODO(), validatingExisting, metav1.UpdateOptions{}); err != nil {
 					return err
 				}
 			}
@@ -480,12 +480,12 @@ func (wh *WebHook) selfDeregistration(webhookConfigName string) error {
 	mutatingConfigs := wh.clientset.AdmissionregistrationV1().MutatingWebhookConfigurations()
 	validatingConfigs := wh.clientset.AdmissionregistrationV1().ValidatingWebhookConfigurations()
 	if wh.enableResourceQuotaEnforcement {
-		err := validatingConfigs.Delete(webhookConfigName, &metav1.DeleteOptions{GracePeriodSeconds: int64ptr(0)})
+		err := validatingConfigs.Delete(context.TODO(), webhookConfigName, metav1.DeleteOptions{GracePeriodSeconds: int64ptr(0)})
 		if err != nil {
 			return err
 		}
 	}
-	return mutatingConfigs.Delete(webhookConfigName, &metav1.DeleteOptions{GracePeriodSeconds: int64ptr(0)})
+	return mutatingConfigs.Delete(context.TODO(), webhookConfigName, metav1.DeleteOptions{GracePeriodSeconds: int64ptr(0)})
 }
 
 func admitSparkApplications(review *admissionv1.AdmissionReview, enforcer resourceusage.ResourceQuotaEnforcer) (*admissionv1.AdmissionResponse, error) {

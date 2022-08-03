@@ -409,12 +409,12 @@ func handleHadoopConfiguration(
 			hadoopConfDir, err)
 	}
 
-	err = kubeClientset.CoreV1().ConfigMaps(Namespace).Delete(configMap.Name, &metav1.DeleteOptions{})
+	err = kubeClientset.CoreV1().ConfigMaps(Namespace).Delete(context.TODO(), configMap.Name, metav1.DeleteOptions{})
 	if err != nil && !errors.IsNotFound(err) {
 		return fmt.Errorf("failed to delete existing ConfigMap %s: %v", configMap.Name, err)
 	}
 
-	if configMap, err = kubeClientset.CoreV1().ConfigMaps(Namespace).Create(configMap); err != nil {
+	if configMap, err = kubeClientset.CoreV1().ConfigMaps(Namespace).Create(context.TODO(), configMap, metav1.CreateOptions{}); err != nil {
 		return fmt.Errorf("failed to create ConfigMap %s: %v", configMap.Name, err)
 	}
 
