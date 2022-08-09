@@ -24,6 +24,7 @@ require (
 	github.com/stretchr/testify v1.4.0
 	golang.org/x/net v0.0.0-20200202094626-16171245cfb2
 	golang.org/x/sync v0.0.0-20190911185100-cd5d95a43a6e
+	golang.org/x/sys v0.0.0-20220808155132-1c4a2a72c664 // indirect
 	golang.org/x/time v0.0.0-20190308202827-9d24e82272b4
 	k8s.io/api v0.16.6
 	k8s.io/apiextensions-apiserver v0.0.0
