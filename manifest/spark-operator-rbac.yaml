@@ -39,7 +39,7 @@ rules:
 - apiGroups: [""]
   resources: ["services", "secrets"]
   verbs: ["create", "get", "delete"]
-- apiGroups: ["extensions"]
+- apiGroups: ["extensions", "networking.k8s.io"]
   resources: ["ingresses"]
   verbs: ["create", "get", "delete"]
 - apiGroups: [""]
