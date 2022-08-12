@@ -19,6 +19,7 @@ package webhook
 import (
 	"encoding/json"
 	"k8s.io/api/admission/v1"
+	kubeclientfake "k8s.io/client-go/kubernetes/fake"
 	"testing"
 	"time"
 
@@ -36,6 +37,7 @@ import (
 
 func TestMutatePod(t *testing.T) {
 	crdClient := crdclientfake.NewSimpleClientset()
+	kubeClient := kubeclientfake.NewSimpleClientset()
 	informerFactory := crdinformers.NewSharedInformerFactory(crdClient, 0*time.Second)
 	informer := informerFactory.Sparkoperator().V1beta2().SparkApplications()
 	lister := informer.Lister()
@@ -73,7 +75,7 @@ func TestMutatePod(t *testing.T) {
 			Namespace: "default",
 		},
 	}
-	response, _ := mutatePods(review, lister, "default")
+	response, _ := mutatePods(review, lister, "default", kubeClient)
 	assert.True(t, response.Allowed)
 
 	// 2. Test processing Spark pod with only one patch: adding an OwnerReference.
@@ -95,7 +97,7 @@ func TestMutatePod(t *testing.T) {
 		t.Error(err)
 	}
 	review.Request.Object.Raw = podBytes
-	response, _ = mutatePods(review, lister, "default")
+	response, _ = mutatePods(review, lister, "default", kubeClient)
 	assert.True(t, response.Allowed)
 	assert.Equal(t, v1.PatchTypeJSONPatch, *response.PatchType)
 	assert.True(t, len(response.Patch) > 0)
@@ -168,7 +170,7 @@ func TestMutatePod(t *testing.T) {
 		t.Error(err)
 	}
 	review.Request.Object.Raw = podBytes
-	response, _ = mutatePods(review, lister, "default")
+	response, _ = mutatePods(review, lister, "default", kubeClient)
 	assert.True(t, response.Allowed)
 	assert.Equal(t, v1.PatchTypeJSONPatch, *response.PatchType)
 	assert.True(t, len(response.Patch) > 0)
